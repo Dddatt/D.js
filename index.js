@@ -1,0 +1,608 @@
+window.D=(function(D){
+
+if(!window.vec3||!window.mat3||!window.vec2||!window.mat2||!window.vec4||!window.mat4||!window.quat){
+    
+    alert('The D.js library is dependent on glMatrix! Make sure it is imported and initalized before D.js. Import glMatrix with a script using this scr: https://cdnjs.cloudflare.com/ajax/libs/gl-matrix/2.8.1/gl-matrix-min.js')
+    console.log('error using glMatrix')
+}
+
+D.HALF_PI=Math.PI*0.5
+D.TWO_PI=Math.PI*2
+D.TO_RAD=Math.PI/180
+D.TO_DEG=180/Math.PI
+D.random=(min,max)=>Math.random()*(max-min)+min
+D.constrain=(x,a,b)=>x<a?a:x>b?b:x
+
+D.getContext=(canv,context='webgl',data={})=>{
+    
+    D.version=['webgl','webgl2'].indexOf(context)+1
+    D.context=context
+    
+    D.gl=canv.getContext(context,data)
+    
+    if(!D.gl||!D.version){
+        
+        alert('"'+D.context+'" is not supported!')
+        console.log('error in requested context')
+    }
+
+    return D.gl
+}
+
+D.getExtension=(e)=>{
+    
+    if(!D.gl.getExtension(e)){
+        
+        alert(D.context+' extension "'+e+'" is not supported!')
+        console.log('error in requested extension')
+    }
+}
+
+D.clear=(r,g,b,a=1)=>{
+    
+    D.gl.clearColor(r,g,b,a)
+    D.gl.clear(D.gl.COLOR_BUFFER_BIT|D.gl.DEPTH_BUFFER_BIT)
+}
+
+D.viewport=(x,y,w,h)=>{
+    
+    D.viewportWidth=w
+    D.viewportHeight=h
+    D.gl.viewport(x,y,w,h)
+}
+
+D.createProgram=(vsh_src,fsh_src)=>{
+    
+    let gl=D.gl,vshText=vsh_src.trim(),fshText=fsh_src.trim()
+    
+    vsh=gl.createShader(gl.VERTEX_SHADER)
+    fsh=gl.createShader(gl.FRAGMENT_SHADER)
+    gl.shaderSource(vsh,vshText)
+    gl.shaderSource(fsh,fshText)
+    gl.compileShader(vsh)
+    gl.compileShader(fsh)
+    
+    let p=gl.createProgram()
+    gl.attachShader(p,vsh)
+    gl.attachShader(p,fsh)
+    gl.linkProgram(p)
+    
+    let locations={},types={},text=vsh_src.trim().split('\n')
+    
+    for(let i in text){
+        
+        let words=text[i].trim().replaceAll(';','').split(' ')
+        
+        if(words[0]==='attribute'||words[0]==='in'||words[0]==='uniform'){
+            
+            locations[words[2]]=gl['get'+({in:'Attrib',attribute:'Attrib',uniform:'Uniform'}[words[0]])+'Location'](p,words[2])
+            types[words[2]]=words[1]
+            
+            if(words[0]==='attribute'||words[0]==='in'){
+                
+                gl.enableVertexAttribArray(locations[words[2]])
+            }
+            
+        }
+    }
+    
+    text=fsh_src.trim().split('\n')
+    
+    for(let i in text){
+        
+        let words=text[i].trim().replaceAll(';','').split(' ')
+        
+        if(words[0]==='uniform'){
+            
+            words[2]=words[2].substring(0,words[2].indexOf('[')<0?words[2].length:words[2].indexOf('['))
+            
+            locations[words[2]]=gl.getUniformLocation(p,words[2])
+            types[words[2]]=words[1]
+        }
+    }
+    
+    for(let i in types){
+        
+        types[i]={
+            
+            float:'1f',
+            vec2:'2fv',
+            vec3:'3fv',
+            vec4:'4fv',
+            int:'1iv',
+            ivec2:'2iv',
+            ivec3:'3iv',
+            ivec4:'4iv',
+            sampler2D:'1i',
+            mat2:'Matrix2fv',
+            mat3:'Matrix3fv',
+            mat4:'Matrix4fv'
+            
+        }[types[i]]
+    }
+    
+    return {gl:p,locations:locations,uniformTypes:types}
+}
+
+D.setUniform=(name,data)=>{
+    
+    let gl=D.gl
+    
+    if(D.currentProgram.uniformTypes[name][0]==='M'){
+        
+        gl['uniform'+D.currentProgram.uniformTypes[name]](D.currentProgram.locations[name],gl.FALSE,data)
+        
+    } else {
+        
+        gl['uniform'+D.currentProgram.uniformTypes[name]](D.currentProgram.locations[name],data)
+        
+    }
+}
+
+D.useProgram=(program)=>{
+    
+    D.gl.useProgram(program.gl)
+    D.currentProgram=program
+}
+
+D.createMesh=(data,pointers,type='STATIC')=>{
+    
+    verts=Float32Array.from(data.verts)
+    index=Uint16Array.from(data.index)
+    
+    type=type.toUpperCase()+'_DRAW'
+    
+    let gl=D.gl,mesh={},pointerStr=''
+    
+    mesh.wireframe=data.wireframe
+    mesh.objs=data.objs
+    
+    mesh.indexAmount=index.length
+    
+    mesh.vertBuffer=gl.createBuffer()
+    mesh.indexBuffer=gl.createBuffer()
+    
+    gl.bindBuffer(gl.ARRAY_BUFFER,mesh.vertBuffer)
+    gl.bufferData(gl.ARRAY_BUFFER,verts,gl[type])
+    
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,mesh.indexBuffer)
+    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,index,gl[type])
+    
+    for(let i in pointers){
+        
+        let p=pointers[i]
+        
+        pointerStr+='gl.vertexAttribPointer(locations["'+p[0]+'"],'+p[1]+',gl.FLOAT,gl.FALSE,'+p[2]+','+p[3]+');'
+        
+    }
+    
+    mesh.attribFunction=Object.constructor('gl','locations',pointerStr)
+    
+    mesh.attribPointers=pointers
+    
+    return mesh
+}
+
+D.renderMesh=(mesh)=>{
+    
+    D.gl.bindBuffer(D.gl.ARRAY_BUFFER,mesh.vertBuffer)
+    D.gl.bindBuffer(D.gl.ELEMENT_ARRAY_BUFFER,mesh.indexBuffer)
+    mesh.attribFunction(D.gl,D.currentProgram.locations)
+    
+    D.gl.drawElements(mesh.wireframe?D.gl.LINES:D.gl.TRIANGLES,mesh.indexAmount,D.gl.UNSIGNED_SHORT,0)
+}
+
+D.enable3D=()=>{
+    
+    D.gl.enable(D.gl.CULL_FACE)
+    D.gl.cullFace(D.gl.BACK)
+    D.gl.enable(D.gl.DEPTH_TEST)
+    D.gl.depthFunc(D.gl.LEQUAL)
+}
+
+D.enable=(t)=>D.gl.enable(D.gl[t])
+D.disable=(t)=>D.gl.disable(D.gl[t])
+D.cullFace=(t)=>D.gl.cullFace(D.gl[t])
+D.depthFunc=(t)=>D.gl.depthFunc(D.gl[t])
+
+D.prespectiveMatrix=(fov,aspect,zn,zf)=>{
+    
+    let f=Math.tan(D.HALF_PI-fov*D.TO_RAD*0.5),
+        rangeInv=1/(zn-zf)
+        
+    return new Float32Array([
+        f/aspect,0,0,0,
+        0,f,0,0,
+        0,0,(zn+zf)*rangeInv,-1,
+        0,0,zn*zf*rangeInv*2,0
+    ])
+}
+
+D.createIdentityMatrix=()=>mat4.identity(new Float32Array(16))
+D.READ_ONLY_IDENTITY_MATRIX=D.createIdentityMatrix()
+
+D.setViewMatrix=(mat,proj,x,y,z,yaw,pitch,roll=0,zoomBack=0)=>{
+    
+    mat4.fromXRotation(mat,pitch)
+    mat4.rotateY(mat,mat,yaw)
+    
+    if(roll){
+        
+        mat4.rotateZ(mat,mat,roll)
+    }
+    
+    mat4.translate(mat,mat,[-x-mat[2]*zoomBack,-y-mat[6]*zoomBack,-z-mat[10]*zoomBack])
+    
+    mat4.multiply(mat,proj,mat)
+    
+    return mat
+}
+
+D.createTexture=(width=D.viewportWidth,height=D.viewportHeight,data=null,filter='LINEAR',wrap='CLAMP_TO_EDGE',format='RGBA',internalFormat='RGBA',type='UNSIGNED_BYTE',mipmap=false)=>{
+    
+    let gl=D.gl,t=gl.createTexture()
+    gl.bindTexture(gl.TEXTURE_2D,t)
+    gl.texImage2D(gl.TEXTURE_2D,0,gl[format],width,height,0,gl[internalFormat],gl[type],data)
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl[filter])
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl[filter])
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl[wrap])
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl[wrap])
+    
+    if(mipmap){
+        
+        gl.generateMipmap(gl.TEXTURE_2D)
+    }
+    
+    return {texture:t,width:width,height:height}
+}
+
+D.bindTexture=(texture)=>D.gl.bindTexture(D.gl.TEXTURE_2D,texture===null?null:texture.texture)
+
+D.createFramebuffer=(target=false,depth=false,attachment='COLOR_ATTACHMENT0')=>{
+    
+    let gl=D.gl,f=gl.createFramebuffer()
+    gl.bindFramebuffer(gl.FRAMEBUFFER,f)
+    
+    if(target)
+        gl.framebufferTexture2D(gl.FRAMEBUFFER,gl[attachment],gl.TEXTURE_2D,target.texture,0)
+    
+    if(depth){
+        
+        if(!target)
+            target={width:D.viewportWidth,height:D.viewportHeight}
+        
+        let depthBuffer=gl.createRenderbuffer()
+        gl.bindRenderbuffer(gl.RENDERBUFFER,depthBuffer)
+        gl.renderbufferStorage(gl.RENDERBUFFER,gl.DEPTH_COMPONENT16,target.width,target.height)
+        gl.framebufferRenderbuffer(gl.FRAMEBUFFER,gl.DEPTH_ATTACHMENT,gl.RENDERBUFFER,depthBuffer)
+        
+    }
+    
+    return f
+}
+
+D.bindFramebuffer=(framebuffer)=>D.gl.bindFramebuffer(D.gl.FRAMEBUFFER,framebuffer)
+
+D.drawBuffers=(params)=>{
+    
+    let gl=D.gl,arr=[]
+    
+    for(let i in params){
+        
+        gl.framebufferTexture2D(gl.DRAW_FRAMEBUFFER,gl['COLOR_ATTACHMENT'+i],gl.TEXTURE_2D,params[i].texture,0)
+        
+        arr.push(gl['COLOR_ATTACHMENT'+i])
+    }
+    
+    gl.drawBuffers(arr)
+}
+
+D.activeTextures=(params)=>{
+    
+    let gl=D.gl
+    
+    for(let i in params){
+        
+        gl.activeTexture(gl['TEXTURE'+i])
+        gl.bindTexture(gl.TEXTURE_2D,params[i].texture)
+    }
+}
+
+D.createMeshData=(params)=>{
+    
+    let verts=[],index=[],key={
+        
+        x:0,
+        y:1,
+        z:2,
+        u:3,
+        v:4,
+        nx:5,
+        ny:6,
+        nz:7,
+        r:8,
+        g:9,
+        b:10
+    }
+    
+    for(let j in params.meshes){
+        
+        let t=params.meshes[j]
+        
+        switch(t.type){
+            
+            case 'box':
+                
+                {
+                    
+                    let x=t.x||0,
+                        y=t.y||0,
+                        z=t.z||0,
+                        rx=t.rx||0,
+                        ry=t.ry||0,
+                        rz=t.rz||0,
+                        w=t.w||1,
+                        h=t.h||1,
+                        l=t.l||1,
+                        c=[t.r||0,t.g||0,t.b||0],
+                        order=params.order,
+                        vl=params.vl+(verts.length/order.length)
+                        _quat=quat.fromEuler([],rx,ry,rz)
+                    
+                    let v=[
+                        
+                        [-0.5*w,0.5*h,-0.5*l],
+                        [-0.5*w,0.5*h,0.5*l],
+                        [0.5*w,0.5*h,0.5*l],
+                        [0.5*w,0.5*h,-0.5*l],
+                        [-0.5*w,-0.5*h,-0.5*l],
+                        [-0.5*w,-0.5*h,0.5*l],
+                        [0.5*w,-0.5*h,0.5*l],
+                        [0.5*w,-0.5*h,-0.5*l],
+                    ],
+                    n=[
+                        
+                        [0,1,0],
+                        [0,0,1],
+                        [0,0,-1],
+                        [1,0,0],
+                        [-1,0,0],
+                        [0,-1,0],
+                    ]
+                    
+                    for(let i in v){
+                        
+                        vec3.transformQuat(v[i],v[i],_quat)
+                        
+                        vec3.add(v[i],v[i],[x,y,z])
+                        
+                        if(i<6){
+                            
+                            vec3.transformQuat(n[i],n[i],_quat)
+                        }
+                    }
+                    
+                    let _verts=[
+                        
+                        ...v[0],0,1,...n[0],...c,
+                        ...v[1],0,0,...n[0],...c,
+                        ...v[2],1,0,...n[0],...c,
+                        ...v[3],1,1,...n[0],...c,
+                        
+                        ...v[1],0,0,...n[1],...c,
+                        ...v[2],1,0,...n[1],...c,
+                        ...v[5],0,1,...n[1],...c,
+                        ...v[6],1,1,...n[1],...c,
+                        
+                        ...v[0],1,0,...n[2],...c,
+                        ...v[3],0,0,...n[2],...c,
+                        ...v[4],1,1,...n[2],...c,
+                        ...v[7],0,1,...n[2],...c,
+                        
+                        ...v[2],0,0,...n[3],...c,
+                        ...v[3],1,0,...n[3],...c,
+                        ...v[6],0,1,...n[3],...c,
+                        ...v[7],1,1,...n[3],...c,
+                        
+                        ...v[0],0,0,...n[4],...c,
+                        ...v[1],1,0,...n[4],...c,
+                        ...v[4],0,1,...n[4],...c,
+                        ...v[5],1,1,...n[4],...c,
+                        
+                        ...v[4],0,1,...n[5],...c,
+                        ...v[5],0,0,...n[5],...c,
+                        ...v[6],1,0,...n[5],...c,
+                        ...v[7],1,1,...n[5],...c
+                        
+                    ]
+                    
+                    index.push(
+                        
+                        vl,1+vl,2+vl,
+                        vl,2+vl,3+vl,
+                        5+vl,6+vl,7+vl,
+                        6+vl,5+vl,4+vl,
+                        8+vl,9+vl,10+vl,
+                        11+vl,10+vl,9+vl,
+                        14+vl,13+vl,12+vl,
+                        13+vl,14+vl,15+vl,
+                        18+vl,17+vl,16+vl,
+                        17+vl,18+vl,19+vl,
+                        22+vl,21+vl,20+vl,
+                        23+vl,22+vl,20+vl
+                    )
+                    
+                    for(let i=0,l=_verts.length;i<l;i+=11){
+                        
+                        for(let k in order){
+                            
+                            verts.push(_verts[i+key[order[k]]])
+                        }
+                    }
+                    
+                }
+            
+            break
+            
+            case 'sphere':
+                
+                {
+                    
+                    let f=(1+5 ** 0.5)*0.5,
+                        T=4 ** t.detail
+                    
+                    let vertices=new Float32Array((10*T+2)*3);
+                    vertices.set(Float32Array.of(
+                    -1,f,0,1,f,0,-1,-f,0,1,-f,0,
+                    0,-1,f,0,1,f,0,-1,-f,0,1,-f,
+                    f,0,-1,f,0,1,-f,0,-1,-f,0,1));
+                    let triangles=Uint32Array.of(
+                    0,11,5,0,5,1,0,1,7,0,7,10,0,10,11,
+                    11,10,2,5,11,4,1,5,9,7,1,8,10,7,6,
+                    3,9,4,3,4,2,3,2,6,3,6,8,3,8,9,
+                    9,8,1,4,9,5,2,4,11,6,2,10,8,6,7);
+                    
+                    let _v=12;
+                    let midCache=t.detail ? new Map() : null;
+                    
+                    function addMidPoint(a,b) {
+                        let _key=Math.floor((a+b)*(a+b+1)*0.5)+Math.min(a,b);
+                        let i=midCache.get(_key);
+                        if (i !== undefined) { midCache.delete(_key); return i; }
+                        midCache.set(_key,_v);
+                        for (let k=0; k < 3; k++)vertices[3*_v+k]=(vertices[3*a+k]+vertices[3*b+k])*0.5;
+                        i=_v++;
+                        return i;
+                    }
+                    
+                    let trianglesPrev=triangles;
+                    for (let i=0; i < t.detail; i++) {
+                    triangles=new Uint32Array(trianglesPrev.length<<2);
+                    for (let k=0; k < trianglesPrev.length; k += 3) {
+                      let v1=trianglesPrev[k];
+                      let v2=trianglesPrev[k+1];
+                      let v3=trianglesPrev[k+2];
+                      let a=addMidPoint(v1,v2);
+                      let b=addMidPoint(v2,v3);
+                      let c=addMidPoint(v3,v1);
+                      let t=k<<2;
+                      triangles[t++]=v1; triangles[t++]=a; triangles[t++]=c;
+                      triangles[t++]=v2; triangles[t++]=b; triangles[t++]=a;
+                      triangles[t++]=v3; triangles[t++]=c; triangles[t++]=b;
+                      triangles[t++]=a;  triangles[t++]=b; triangles[t++]=c;
+                    }
+                    trianglesPrev=triangles;
+                    }
+                    
+                    for (let i=0; i < vertices.length; i += 3) {
+                        let m=1 / Math.hypot(vertices[i],vertices[i+1],vertices[i+2]);
+                        vertices[i] *= m;
+                        vertices[i+1] *= m;
+                        vertices[i+2] *= m;
+                    }
+                    
+                    for(let i in triangles){
+                        
+                        index.push(triangles[i]+params.vl+(verts.length/params.order.length))
+                        
+                    }
+                    
+                    let rad=t.radius
+                    __verts=[]
+                    
+                    for(let i=0,l=vertices.length;i<l;i+=3){
+                        
+                        __verts.push(vertices[i]*rad+t.x,vertices[i+1]*rad+t.y,vertices[i+2]*rad+t.z,0,1,vertices[i],vertices[i+1],vertices[i+2],t.r,t.g,t.b)
+                    }
+                    
+                    for(let i=0,l=__verts.length;i<l;i+=11){
+                        
+                        for(let k in params.order){
+                            
+                            verts.push(__verts[i+key[params.order[k]]])
+                        }
+                    }
+                    
+                }
+                
+            break
+            
+            case 'plane':
+                
+                {
+                    
+                    let x=t.x||0,
+                        y=t.y||0,
+                        z=t.z||0,
+                        c=[t.r||0,t.g||0,t.b||0],
+                        order=params.order,
+                        vl=params.vl+(verts.length/order.length),
+                        _quat=quat.fromEuler([],t.rx,t.ry,t.rz),
+                        s=t.size
+                    
+                    let v=[
+                        
+                        [-0.5*s,0,-0.5*s],
+                        [-0.5*s,0,0.5*s],
+                        [0.5*s,0,0.5*s],
+                        [0.5*s,0,-0.5*s]
+                        
+                    ],n=[0,1,0]
+                    
+                    vec3.transformQuat(n,n,_quat)
+                    
+                    for(let i in v){
+                        
+                        vec3.transformQuat(v[i],v[i],_quat)
+                        
+                        vec3.add(v[i],v[i],[x,y,z])
+                    }
+                    
+                    let _verts=[
+                        
+                        ...v[0],0,1,...n,...c,
+                        ...v[1],0,0,...n,...c,
+                        ...v[2],1,0,...n,...c,
+                        ...v[3],1,1,...n,...c,
+                    ]
+                    
+                    index.push(
+                        
+                        vl,1+vl,2+vl,
+                        vl,2+vl,3+vl
+                    )
+                    
+                    for(let i=0,l=_verts.length;i<l;i+=11){
+                        
+                        for(let k in order){
+                            
+                            verts.push(_verts[i+key[order[k]]])
+                        }
+                    }
+                    
+                }
+            
+            break
+        }
+    }
+    
+    let _index=[]
+    
+    if(params.wireframe){
+        
+        for(let i=0,l=index.length;i<l;i+=3){
+            
+            _index.push(index[i],index[i+1],index[i+1],index[i+2],index[i+2],index[i])
+            
+        }
+        
+        return {verts:verts,index:_index,objs:params.meshes,wireframe:true}
+    }
+    
+    return {verts:verts,index:index,objs:params.meshes}
+}
+
+
+return D
+
+})({})
