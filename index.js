@@ -215,11 +215,11 @@ D.renderMesh=(mesh)=>{
     if(mesh.instanceData){
         
         D.gl.bindBuffer(D.gl.ARRAY_BUFFER,mesh.instanceBuffer)
-        gl.bufferData(gl.ARRAY_BUFFER,Float32Array.from(mesh.instanceData),gl.DYNAMIC_DRAW)
+        D.gl.bufferData(D.gl.ARRAY_BUFFER,Float32Array.from(mesh.instanceData),D.gl.DYNAMIC_DRAW)
     
         mesh.instancedAttribFunction(D.gl,D.currentProgram.locations)
         
-        D.gl.drawElementsInstanced(mesh.wireframe?D.gl.LINES:D.gl.TRIANGLES,mesh.indexAmount,gl.UNSIGNED_SHORT,0,mesh.instanceData.length/mesh.instanceSize)
+        D.gl.drawElementsInstanced(mesh.wireframe?D.gl.LINES:D.gl.TRIANGLES,mesh.indexAmount,D.gl.UNSIGNED_SHORT,0,mesh.instanceData.length/mesh.instanceSize)
         
         mesh.clearDivisorsFunction(D.gl,D.currentProgram.locations)
         
@@ -645,6 +645,7 @@ D.createMeshData=(params)=>{
     
     return {verts:verts,index:index}
 }
+
 
 return D
 
