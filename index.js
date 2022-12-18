@@ -145,7 +145,7 @@ D.useProgram=(program)=>{
     D.currentProgram=program
 }
 
-D.createMesh=(data,pointers,type='STATIC')=>{
+D.createMesh=(data,pointers,instancedPointers,type='STATIC')=>{
     
     verts=Float32Array.from(data.verts)
     index=Uint16Array.from(data.index)
@@ -155,7 +155,6 @@ D.createMesh=(data,pointers,type='STATIC')=>{
     let gl=D.gl,mesh={},pointerStr=''
     
     mesh.wireframe=data.wireframe
-    mesh.objs=data.objs
     
     mesh.indexAmount=index.length
     
@@ -180,6 +179,30 @@ D.createMesh=(data,pointers,type='STATIC')=>{
     
     mesh.attribPointers=pointers
     
+    if(instancedPointers){
+        
+        let i_pointerStr='',clearDivisorsStr=''
+        
+        for(let i in instancedPointers){
+            
+            let p=instancedPointers[i]
+            
+            i_pointerStr+='gl.vertexAttribPointer(locations["'+p[0]+'"],'+p[1]+',gl.FLOAT,gl.FALSE,'+p[2]+','+p[3]+');gl.vertexAttribDivisor(locations["'+p[0]+'"],1);'
+            
+            clearDivisorsStr+='gl.vertexAttribDivisor(locations["'+p[0]+'"],0);'
+            
+        }
+        
+        mesh.instancedAttribFunction=Object.constructor('gl','locations',i_pointerStr)
+        mesh.clearDivisorsFunction=Object.constructor('gl','locations',clearDivisorsStr)
+        
+        mesh.instancedAttribPointers=instancedPointers
+        mesh.instanceData=[]
+        mesh.instanceSize=instancedPointers[0][2]*0.25
+        
+        mesh.instanceBuffer=gl.createBuffer()
+    }
+    
     return mesh
 }
 
@@ -189,7 +212,28 @@ D.renderMesh=(mesh)=>{
     D.gl.bindBuffer(D.gl.ELEMENT_ARRAY_BUFFER,mesh.indexBuffer)
     mesh.attribFunction(D.gl,D.currentProgram.locations)
     
-    D.gl.drawElements(mesh.wireframe?D.gl.LINES:D.gl.TRIANGLES,mesh.indexAmount,D.gl.UNSIGNED_SHORT,0)
+    if(mesh.instanceData){
+        
+        D.gl.bindBuffer(D.gl.ARRAY_BUFFER,mesh.instanceBuffer)
+        gl.bufferData(gl.ARRAY_BUFFER,Float32Array.from(mesh.instanceData),gl.DYNAMIC_DRAW)
+    
+        mesh.instancedAttribFunction(D.gl,D.currentProgram.locations)
+        
+        D.gl.drawElementsInstanced(mesh.wireframe?D.gl.LINES:D.gl.TRIANGLES,mesh.indexAmount,gl.UNSIGNED_SHORT,0,mesh.instanceData.length/mesh.instanceSize)
+        
+        mesh.clearDivisorsFunction(D.gl,D.currentProgram.locations)
+        
+    } else {
+        
+        D.gl.drawElements(mesh.wireframe?D.gl.LINES:D.gl.TRIANGLES,mesh.indexAmount,D.gl.UNSIGNED_SHORT,0)
+    }
+}
+
+D.clearInstances=(mesh)=>mesh.instanceData=[]
+
+D.addInstance=(mesh,data)=>{
+    
+    mesh.instanceData.push(...data)
 }
 
 D.enable3D=()=>{
@@ -596,12 +640,11 @@ D.createMeshData=(params)=>{
             
         }
         
-        return {verts:verts,index:_index,objs:params.meshes,wireframe:true}
+        return {verts:verts,index:_index,wireframe:true}
     }
     
-    return {verts:verts,index:index,objs:params.meshes}
+    return {verts:verts,index:index}
 }
-
 
 return D
 
