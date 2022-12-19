@@ -215,11 +215,11 @@ D.renderMesh=(mesh)=>{
     if(mesh.instanceData){
         
         D.gl.bindBuffer(D.gl.ARRAY_BUFFER,mesh.instanceBuffer)
-        D.gl.bufferData(D.gl.ARRAY_BUFFER,Float32Array.from(mesh.instanceData),D.gl.DYNAMIC_DRAW)
+        gl.bufferData(gl.ARRAY_BUFFER,Float32Array.from(mesh.instanceData),gl.DYNAMIC_DRAW)
     
         mesh.instancedAttribFunction(D.gl,D.currentProgram.locations)
         
-        D.gl.drawElementsInstanced(mesh.wireframe?D.gl.LINES:D.gl.TRIANGLES,mesh.indexAmount,D.gl.UNSIGNED_SHORT,0,mesh.instanceData.length/mesh.instanceSize)
+        D.gl.drawElementsInstanced(mesh.wireframe?D.gl.LINES:D.gl.TRIANGLES,mesh.indexAmount,gl.UNSIGNED_SHORT,0,mesh.instanceData.length/mesh.instanceSize)
         
         mesh.clearDivisorsFunction(D.gl,D.currentProgram.locations)
         
@@ -353,6 +353,8 @@ D.activeTextures=(params)=>{
 }
 
 D.createMeshData=(params)=>{
+    
+    params.vl=params.vl||0
     
     let verts=[],index=[],key={
         
@@ -644,6 +646,123 @@ D.createMeshData=(params)=>{
     }
     
     return {verts:verts,index:index}
+}
+
+D.createOBJMeshData=(params)=>{
+    
+    params.vl=params.vl||0
+    
+    let _verts=[],index=[],pos=[],uv=[],normal=[],faces=[],order=params.order
+    
+    let obj=params.obj.trim().split('\n')
+    
+    for(let i in obj){
+        
+        obj[i]=obj[i].trim()
+        
+        let type=obj[i].split(' ')[0],data=[],s=obj[i].substring(obj[i].indexOf(' ')+1,obj[i].length).split(' ')
+        
+        for(let j in s){
+            
+            if(s[j].indexOf('/')<0){
+                
+                data.push(Number(s[j]))
+            }
+        }
+        
+        switch(type){
+            
+            case 'v':
+                
+                pos.push(data)
+                
+            break
+            
+            case 'vt':
+                
+                uv.push(data)
+                
+            break
+            
+            case 'vn':
+                
+                normal.push(data)
+                
+            break
+            
+            case 'f':
+                
+                for(let j in s){
+                    
+                    s[j]=s[j].split('/')
+                }
+                
+                faces.push(s)
+                
+            break
+            
+        }
+        
+    }
+    
+    let key={
+        
+        x:0,
+        y:1,
+        z:2,
+        u:3,
+        v:4,
+        nx:5,
+        ny:6,
+        nz:7,
+        r:8,
+        g:9,
+        b:10
+    }
+    
+    for(let i in faces){
+        
+        let v=[],vt=[],vn=[],vl=(_verts.length/11)+params.vl,count=0
+        
+        for(let j in faces[i]){
+            
+            let f=faces[i][j]
+            
+            count++
+            _verts.push(...pos[f[0]-1],...uv[f[1]-1],...normal[f[2]-1],...params.color)
+        }
+        
+        for(let i=0;i<count-1;i++){
+            
+            index.push(vl,i+vl,i+vl+1)
+        }
+    }
+    
+    let verts=[]
+    
+    for(let i=0;i<_verts.length;i+=11){
+        
+        for(let k in order){
+            
+            verts.push(_verts[i+key[order[k]]])
+        }
+    }
+    
+    let _index=[]
+    
+    if(params.wireframe){
+        
+        for(let i=0,l=index.length;i<l;i+=3){
+            
+            _index.push(index[i],index[i+1],index[i+1],index[i+2],index[i+2],index[i])
+            
+        }
+        
+        return {verts:verts,index:_index,wireframe:true}
+    }
+    
+    return {verts:verts,index:index}
+   
 }
 
 
