@@ -215,7 +215,7 @@ D.renderMesh=(mesh)=>{
     if(mesh.instanceData){
         
         D.gl.bindBuffer(D.gl.ARRAY_BUFFER,mesh.instanceBuffer)
-        gl.bufferData(D.gl.ARRAY_BUFFER,Float32Array.from(mesh.instanceData),D.gl.DYNAMIC_DRAW)
+        D.gl.bufferData(D.gl.ARRAY_BUFFER,Float32Array.from(mesh.instanceData),D.gl.DYNAMIC_DRAW)
     
         mesh.instancedAttribFunction(D.gl,D.currentProgram.locations)
         
