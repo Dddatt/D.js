@@ -4,7 +4,7 @@ A fast, simple, and flexible WebGL &amp; WebGL2 library.<br><br>
 Deferred Shading Demo: https://dddatt.github.io/D.js/deferred_shading_demo.html<br>
 Instancing Demo: https://dddatt.github.io/D.js/instancing_demo.html<br>
 OBJ Demo: https://dddatt.github.io/D.js/obj_demo.html<br>
-Texture and Alpha Demo: https://dddatt.github.io/D.js/texture_ang_alpha_demo.html<br>
+Texture and Alpha Demo: https://dddatt.github.io/D.js/texture_and_alpha_demo.html<br>
 
 # Documentation v1.1
 
