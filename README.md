@@ -5,11 +5,11 @@ Deferred Shading Demo: https://dddatt.github.io/D.js/deferred_shading_demo.html<
 Instancing Demo: https://dddatt.github.io/D.js/instancing_demo.html<br>
 OBJ Demo: https://dddatt.github.io/D.js/obj_demo.html<br>
 
-# Documentation
+# Documentation v1.1
 
 Notes:
 
-	Add a script with the src 'https://cdn.jsdelivr.net/gh/Dddatt/D.js@v1.0.1/index.js' to a program to use D.js
+	Add a script with the src 'https://cdn.jsdelivr.net/gh/Dddatt/D.js@v1.1.0/index.js' to a program to use D.js
     
 	D.js must be used with glMatrix! Add a script with this src: 'https://cdnjs.cloudflare.com/ajax/libs/gl-matrix/2.8.1/gl-matrix-min.js' to your program BEFORE the D.js script
 
@@ -42,9 +42,9 @@ D.clear
     
 	PARAM - r: The RED color value of the wanted background color in the range of 0 - 1. Required
     
-	PARAM - g: The GREEN color value of the wanted background color in the range of 0 - 1. Required
+	PARAM - g: The GREEN color value of the wanted background color in the range of 0 - 1. Default: 'r' param
     
-	PARAM - b: The BLUE color value of the wanted background color in the range of 0 - 1. Required
+	PARAM - b: The BLUE color value of the wanted background color in the range of 0 - 1. Default: 'r' param
     
 	PARAM - a: The ALPHA color value of the wanted background color in the range of 0 - 1. Default: 1
     
@@ -64,7 +64,7 @@ D.viewport
 	PARAM - height: The height of the viewport. Should often be kept at the height of the canvas unless performing a specific task. Required.
     
     
-	Sets the WebGL viewport to the provided values. Should be called atleast once as setting the viewport is MANDATORY and called as soon as possible after getting the WebGL context.
+	Sets the WebGL viewport to the provided values. Should be called atleast once as setting the viewport is MANDATORY and called as soon as possible after getting the WebGL context. Also recomputes and sets D.aspect.
 
 
 
@@ -83,7 +83,7 @@ D.setUniform
     
 	PARAM - name: The name of the uniform to set. Should be the same as referenced in the shaders. Required.
     
-	PARAM - data: The data to set the uniform to. Should be an array of values if uniforming a vector or matrix, else, a number. Required.
+	PARAM - data: The data to set the uniform to. Should be an array of values unless uniforming textures. Required.
     
     
 	Sets the uniform of the name stated in the currently used program.
@@ -142,6 +142,25 @@ D.depthFunc
     
 
 
+D.enableBlend
+    
+    No params needed.
+    
+    
+	Enables WebGL alpha blending and sets the blend function to SRC_ALPHA and ONE_MINUS_SRC_ALPHA.
+    
+
+
+D.blendFunc
+    
+	PARAM - t1: Sets the WebGL alpha blending mode's sfactor to the provided parameter. Required
+	
+	PARAM - t2: Sets the WebGL alpha blending mode's dfactor to the provided parameter. Required
+    
+	Sets the WebGL alpha blending factors to the provided types.
+    
+
+
 D.createIdentityMatrix
     
 	No params needed.
@@ -153,16 +172,16 @@ D.createIdentityMatrix
 
 D.prespectiveMatrix
     
-	PARAM - fov: The FOV for the projection matrix, in degrees. Required
+	PARAM - fov: The FOV for the projection matrix, in degrees. Default: 80
     
-	PARAM - aspect: The aspect for the projection matrix, aka width/height. Required
+	PARAM - aspect: The aspect for the projection matrix, aka width/height. Default: D.aspect
     
-	PARAM - zn: The near distance for the projection matrix. Objects will be rendered if they are further than this limit. Cannot be 0 due to division. Required
+	PARAM - zn: The near distance for the projection matrix. Objects will be rendered if they are further than this limit. Cannot be 0 due to division. Default: 0.1
     
-	PARAM - zf: The far distance for the projection matrix. Objects will be rendered if they are closer than this limit. Should be kept as small as possible to optimize rendering. 1,000 should be fine in most cases. Required
+	PARAM - zf: The far distance for the projection matrix. Objects will be rendered if they are closer than this limit. Should be kept as small as possible to optimize rendering. 1,000 should be fine in most cases. Default: 1000
     
     
-	Returns a Float32Array containing elements of a 4x4 prespective projection matrix create from provided params.
+	Returns a Float32Array containing elements of a 4x4 prespective projection matrix created from the provided params.
     
 
 
@@ -187,7 +206,7 @@ D.setViewMatrix
 	PARAM - zoomBack: The amount to translate the position back by. Moves the camera backwards according to the rotation, creating a 3rd person/orbiting camera effect. Default: 0
     
     
-	Transforms a projection matrix with given position and rotation. Outputs are written into a Float32Array that should be provided and also returned.
+	Transforms a projection matrix with given position and rotation. Outputs are written into 'mat'. Returns an object with the 'camPos' being the camera's position, and 'modelMatrix' which is the camera's model matrix.
     
 
 
@@ -196,11 +215,17 @@ D.createMeshData
 	PARAM - params: An object defining the desired mesh. Required
     
     	PROPERTY of 'params' - meshes: An array with objects each defining a geometry. Each element defines an individual shape. There are currently 3 supported, 'box', 'sphere', and 'plane'. Required.
-        	The box has 'x', 'y', 'z', 'w', 'h', 'l', 'r', 'g', 'b', 'rx', 'ry', 'rz' properties.
-       	 
-        	The sphere has 'x', 'y', 'z', 'radius', 'r', 'g', 'b' properties.
-       	 
-        	The plane has 'x', 'y', 'z', 'size', 'r', 'g', 'b', 'rx', 'ry', 'rz' properties.
+    	    
+    	    Each shape has a 'textureMapping' property that describes how the UVs are mapped on each face. The name of each property represents the side of the shape, and each side is an object of 4 values: 'x', 'y', 'w', 'h'. The 'x' and 'y' is the starting position of the face's part of the texture in UVs. The 'w' and 'h' is the size of the face's part of the texture in UVs.
+    	    
+        	The box has 'x', 'y', 'z', 'w', 'h', 'l', 'r', 'g', 'b', 'a', 'rx', 'ry', 'rz' properties. It has 'front', 'back', 'left', 'right', 'top', and 'bottom' side names.
+        	
+        	The sphere has 'x', 'y', 'z', 'radius', 'r', 'g', 'b', 'a', properties. It has one side, named 'side'.
+        	
+        	The plane has 'x', 'y', 'z', 'size', 'r', 'g', 'b', 'a', 'rx', 'ry', 'rz' properties. It has one side, named 'side'.
+        	
+        	The cylinder has 'x', 'y', 'z', 'radius', 'radius2', 'detail', 'height', 'r', 'g', 'b', 'a', 'rx', 'ry', 'rz' properties. It has 'top', 'bottom', and 'side' side names.
+
    	 
     	PROPERTY of 'params' - order: An array of elements defining the order of values in a vertex. Elements can include: 'x', 'y', 'z', 'r', 'g', 'b', 'nx', 'ny', 'nz', 'u', 'v'. Default: ['x','y','z','r','g','b','nx','ny','nz']
    	 
@@ -276,7 +301,9 @@ D.addInstance
     
 
 
+
 now we're getting to the big boi webgl stuffs, complicated things with a million parameters each ;-;
+
 
 
 
@@ -354,9 +381,13 @@ D.activeTextures
     
 
 
-the main library is done, these below are just random useful stuff cached for performance
+
+the main library is done, these below are just random useful stuff cached for performance and shouldn't be changed
 
 
+
+
+D.PI: pi
 
 D.HALF_PI: pi/2
 
@@ -366,8 +397,16 @@ D.TO_RAD: pi/180
 
 D.TO_DEG: 180/pi
 
+D.INV_255: 1/255
+
+D.aspect: The aspect ratio of the canvas, computed and set in D.viewport.
+
+D.meshKey: An object of types of values in a mesh data's vert array, the index corresponding with the property's value, before the vert array gets cut to leave the provided order behind.
+
+D.meshKeyAmount: How many properties are in D.meshKey.
+
 D.READ_ONLY_IDENTITY_MATRIX: A Float32Array with elements of a 4x4 identity matrix. To be used as a cached identity matrix to avoid defining a new one.
 
 D.random(min,max): Returns a random value between the range of min and max.
 
-D.constrain(x,min,max): Returns the value of x limited to between the range of min and max
+D.constrain(x,min,max): Returns the value of x limited to between the range of min and max.
