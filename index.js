@@ -6,12 +6,19 @@ if(!window.vec3||!window.mat3||!window.vec2||!window.mat2||!window.vec4||!window
     console.log('error using glMatrix')
 }
 
+D.PI=Math.PI
 D.HALF_PI=Math.PI*0.5
 D.TWO_PI=Math.PI*2
 D.TO_RAD=Math.PI/180
 D.TO_DEG=180/Math.PI
+D.INV_255=1/255
 D.random=(min,max)=>Math.random()*(max-min)+min
 D.constrain=(x,a,b)=>x<a?a:x>b?b:x
+
+D.meshKey={x:0,y:1,z:2,u:3,v:4,nx:5,ny:6,nz:7,r:8,g:9,b:10,a:11}
+D.meshKeyAmount=0
+
+for(let i in D.meshKey){D.meshKeyAmount++}
 
 D.getContext=(canv,context='webgl',data={})=>{
     
@@ -23,7 +30,6 @@ D.getContext=(canv,context='webgl',data={})=>{
     if(!D.gl||!D.version){
         
         alert('"'+D.context+'" is not supported!')
-        console.log('error in requested context')
     }
 
     return D.gl
@@ -34,11 +40,10 @@ D.getExtension=(e)=>{
     if(!D.gl.getExtension(e)){
         
         alert(D.context+' extension "'+e+'" is not supported!')
-        console.log('error in requested extension')
     }
 }
 
-D.clear=(r,g,b,a=1)=>{
+D.clear=(r=0,g=r,b=r,a=1)=>{
     
     D.gl.clearColor(r,g,b,a)
     D.gl.clear(D.gl.COLOR_BUFFER_BIT|D.gl.DEPTH_BUFFER_BIT)
@@ -49,6 +54,7 @@ D.viewport=(x,y,w,h)=>{
     D.viewportWidth=w
     D.viewportHeight=h
     D.gl.viewport(x,y,w,h)
+    D.aspect=w/h
 }
 
 D.createProgram=(vsh_src,fsh_src)=>{
@@ -219,7 +225,7 @@ D.renderMesh=(mesh)=>{
     
         mesh.instancedAttribFunction(D.gl,D.currentProgram.locations)
         
-        D.gl.drawElementsInstanced(mesh.wireframe?D.gl.LINES:D.gl.TRIANGLES,mesh.indexAmount,D.gl.UNSIGNED_SHORT,0,mesh.instanceData.length/mesh.instanceSize)
+        D.gl.drawElementsInstanced(mesh.wireframe?D.gl.LINES:D.gl.TRIANGLES,mesh.indexAmount,gl.UNSIGNED_SHORT,0,mesh.instanceData.length/mesh.instanceSize)
         
         mesh.clearDivisorsFunction(D.gl,D.currentProgram.locations)
         
@@ -248,8 +254,15 @@ D.enable=(t)=>D.gl.enable(D.gl[t])
 D.disable=(t)=>D.gl.disable(D.gl[t])
 D.cullFace=(t)=>D.gl.cullFace(D.gl[t])
 D.depthFunc=(t)=>D.gl.depthFunc(D.gl[t])
+D.blendFunc=(t1,t2)=>D.gl.blendFunc(D.gl[t1],D.gl[t2])
 
-D.prespectiveMatrix=(fov,aspect,zn,zf)=>{
+D.enableBlend=()=>{
+    
+    D.gl.enable(D.gl.BLEND)
+    D.gl.blendFunc(D.gl.SRC_ALPHA,D.gl.ONE_MINUS_SRC_ALPHA)
+}
+
+D.prespectiveMatrix=(fov=80,aspect=D.aspect,zn=0.1,zf=1000)=>{
     
     let f=Math.tan(D.HALF_PI-fov*D.TO_RAD*0.5),
         rangeInv=1/(zn-zf)
@@ -275,11 +288,15 @@ D.setViewMatrix=(mat,proj,x,y,z,yaw,pitch,roll=0,zoomBack=0)=>{
         mat4.rotateZ(mat,mat,roll)
     }
     
-    mat4.translate(mat,mat,[-x-mat[2]*zoomBack,-y-mat[6]*zoomBack,-z-mat[10]*zoomBack])
+    let p=[-x-mat[2]*zoomBack,-y-mat[6]*zoomBack,-z-mat[10]*zoomBack]
+    
+    mat4.translate(mat,mat,p)
+    
+    let m=mat.slice()
     
     mat4.multiply(mat,proj,mat)
     
-    return mat
+    return {camPos:p,modelMatrix:m}
 }
 
 D.createTexture=(width=D.viewportWidth,height=D.viewportHeight,data=null,filter='LINEAR',wrap='CLAMP_TO_EDGE',format='RGBA',internalFormat='RGBA',type='UNSIGNED_BYTE',mipmap=false)=>{
@@ -356,20 +373,7 @@ D.createMeshData=(params)=>{
     
     params.vl=params.vl||0
     
-    let verts=[],index=[],key={
-        
-        x:0,
-        y:1,
-        z:2,
-        u:3,
-        v:4,
-        nx:5,
-        ny:6,
-        nz:7,
-        r:8,
-        g:9,
-        b:10
-    }
+    let verts=[],index=[]
     
     for(let j in params.meshes){
         
@@ -390,10 +394,11 @@ D.createMeshData=(params)=>{
                         w=t.w||1,
                         h=t.h||1,
                         l=t.l||1,
-                        c=[t.r||0,t.g||0,t.b||0],
+                        c=[t.r||0,t.g||0,t.b||0,t.a||1],
                         order=params.order,
                         vl=params.vl+(verts.length/order.length)
-                        _quat=quat.fromEuler([],rx,ry,rz)
+                        _quat=quat.fromEuler([],rx,ry,rz),
+                        _tex=t.textureMapping||{top:{x:0,y:0,w:1,h:1},bottom:{x:0,y:0,w:1,h:1},left:{x:0,y:0,w:1,h:1},right:{x:0,y:0,w:1,h:1},front:{x:0,y:0,w:1,h:1},back:{x:0,y:0,w:1,h:1}}
                     
                     let v=[
                         
@@ -430,35 +435,35 @@ D.createMeshData=(params)=>{
                     
                     let _verts=[
                         
-                        ...v[0],0,1,...n[0],...c,
-                        ...v[1],0,0,...n[0],...c,
-                        ...v[2],1,0,...n[0],...c,
-                        ...v[3],1,1,...n[0],...c,
+                        ...v[0],1*_tex.top.w+_tex.top.x,1*_tex.top.h+_tex.top.y,...n[0],...c,
+                        ...v[1],1*_tex.top.w+_tex.top.x,0*_tex.top.h+_tex.top.y,...n[0],...c,
+                        ...v[2],0*_tex.top.w+_tex.top.x,0*_tex.top.h+_tex.top.y,...n[0],...c,
+                        ...v[3],0*_tex.top.w+_tex.top.x,1*_tex.top.h+_tex.top.y,...n[0],...c,
                         
-                        ...v[1],0,0,...n[1],...c,
-                        ...v[2],1,0,...n[1],...c,
-                        ...v[5],0,1,...n[1],...c,
-                        ...v[6],1,1,...n[1],...c,
+                        ...v[1],0*_tex.back.w+_tex.back.x,0*_tex.back.h+_tex.back.y,...n[1],...c,
+                        ...v[2],1*_tex.back.w+_tex.back.x,0*_tex.back.h+_tex.back.y,...n[1],...c,
+                        ...v[5],0*_tex.back.w+_tex.back.x,1*_tex.back.h+_tex.back.y,...n[1],...c,
+                        ...v[6],1*_tex.back.w+_tex.back.x,1*_tex.back.h+_tex.back.y,...n[1],...c,
                         
-                        ...v[0],1,0,...n[2],...c,
-                        ...v[3],0,0,...n[2],...c,
-                        ...v[4],1,1,...n[2],...c,
-                        ...v[7],0,1,...n[2],...c,
+                        ...v[0],1*_tex.front.w+_tex.front.x,0*_tex.front.h+_tex.front.y,...n[2],...c,
+                        ...v[3],0*_tex.front.w+_tex.front.x,0*_tex.front.h+_tex.front.y,...n[2],...c,
+                        ...v[4],1*_tex.front.w+_tex.front.x,1*_tex.front.h+_tex.front.y,...n[2],...c,
+                        ...v[7],0*_tex.front.w+_tex.front.x,1*_tex.front.h+_tex.front.y,...n[2],...c,
                         
-                        ...v[2],0,0,...n[3],...c,
-                        ...v[3],1,0,...n[3],...c,
-                        ...v[6],0,1,...n[3],...c,
-                        ...v[7],1,1,...n[3],...c,
+                        ...v[2],0*_tex.right.w+_tex.right.x,0*_tex.right.h+_tex.right.y,...n[3],...c,
+                        ...v[3],1*_tex.right.w+_tex.right.x,0*_tex.right.h+_tex.right.y,...n[3],...c,
+                        ...v[6],0*_tex.right.w+_tex.right.x,1*_tex.right.h+_tex.right.y,...n[3],...c,
+                        ...v[7],1*_tex.right.w+_tex.right.x,1*_tex.right.h+_tex.right.y,...n[3],...c,
                         
-                        ...v[0],0,0,...n[4],...c,
-                        ...v[1],1,0,...n[4],...c,
-                        ...v[4],0,1,...n[4],...c,
-                        ...v[5],1,1,...n[4],...c,
+                        ...v[0],0*_tex.left.w+_tex.left.x,0*_tex.left.h+_tex.left.y,...n[4],...c,
+                        ...v[1],1*_tex.left.w+_tex.left.x,0*_tex.left.h+_tex.left.y,...n[4],...c,
+                        ...v[4],0*_tex.left.w+_tex.left.x,1*_tex.left.h+_tex.left.y,...n[4],...c,
+                        ...v[5],1*_tex.left.w+_tex.left.x,1*_tex.left.h+_tex.left.y,...n[4],...c,
                         
-                        ...v[4],0,1,...n[5],...c,
-                        ...v[5],0,0,...n[5],...c,
-                        ...v[6],1,0,...n[5],...c,
-                        ...v[7],1,1,...n[5],...c
+                        ...v[4],0*_tex.bottom.w+_tex.bottom.x,1*_tex.bottom.h+_tex.bottom.y,...n[5],...c,
+                        ...v[5],0*_tex.bottom.w+_tex.bottom.x,0*_tex.bottom.h+_tex.bottom.y,...n[5],...c,
+                        ...v[6],1*_tex.bottom.w+_tex.bottom.x,0*_tex.bottom.h+_tex.bottom.y,...n[5],...c,
+                        ...v[7],1*_tex.bottom.w+_tex.bottom.x,1*_tex.bottom.h+_tex.bottom.y,...n[5],...c
                         
                     ]
                     
@@ -478,11 +483,11 @@ D.createMeshData=(params)=>{
                         23+vl,22+vl,20+vl
                     )
                     
-                    for(let i=0,l=_verts.length;i<l;i+=11){
+                    for(let i=0,l=_verts.length;i<l;i+=D.meshKeyAmount){
                         
                         for(let k in order){
                             
-                            verts.push(_verts[i+key[order[k]]])
+                            verts.push(_verts[i+D.meshKey[order[k]]])
                         }
                     }
                     
@@ -494,8 +499,10 @@ D.createMeshData=(params)=>{
                 
                 {
                     
+                    
                     let f=(1+5 ** 0.5)*0.5,
-                        T=4 ** t.detail
+                        T=4 ** t.detail,
+                        tex=t.textureMapping||{side:{x:0,y:0,w:1,h:1}}
                     
                     let vertices=new Float32Array((10*T+2)*3);
                     vertices.set(Float32Array.of(
@@ -558,17 +565,16 @@ D.createMeshData=(params)=>{
                     
                     for(let i=0,l=vertices.length;i<l;i+=3){
                         
-                        __verts.push(vertices[i]*rad+t.x,vertices[i+1]*rad+t.y,vertices[i+2]*rad+t.z,0,1,vertices[i],vertices[i+1],vertices[i+2],t.r,t.g,t.b)
+                        __verts.push(vertices[i]*rad+t.x,vertices[i+1]*rad+t.y,vertices[i+2]*rad+t.z,(-Math.acos(vertices[i])/D.PI)*tex.side.w+tex.side.x,(-vertices[i+1]*0.5+0.5)*tex.side.h+tex.side.y,vertices[i],vertices[i+1],vertices[i+2],t.r||0,t.g||0,t.b||0,t.a||1)
                     }
                     
-                    for(let i=0,l=__verts.length;i<l;i+=11){
+                    for(let i=0,l=__verts.length;i<l;i+=D.meshKeyAmount){
                         
                         for(let k in params.order){
                             
-                            verts.push(__verts[i+key[params.order[k]]])
+                            verts.push(__verts[i+D.meshKey[params.order[k]]])
                         }
                     }
-                    
                 }
                 
             break
@@ -580,11 +586,12 @@ D.createMeshData=(params)=>{
                     let x=t.x||0,
                         y=t.y||0,
                         z=t.z||0,
-                        c=[t.r||0,t.g||0,t.b||0],
+                        c=[t.r||0,t.g||0,t.b||0,t.a||1],
                         order=params.order,
                         vl=params.vl+(verts.length/order.length),
-                        _quat=quat.fromEuler([],t.rx,t.ry,t.rz),
-                        s=t.size
+                        _quat=quat.fromEuler([],t.rx||0,t.ry||0,t.rz||0),
+                        s=t.size,
+                        tex=t.textureMapping||{side:{x:0,y:0,w:1,h:1}}
                     
                     let v=[
                         
@@ -606,10 +613,10 @@ D.createMeshData=(params)=>{
                     
                     let _verts=[
                         
-                        ...v[0],0,1,...n,...c,
-                        ...v[1],0,0,...n,...c,
-                        ...v[2],1,0,...n,...c,
-                        ...v[3],1,1,...n,...c,
+                        ...v[0],1*tex.side.w+tex.side.x,1*tex.side.h+tex.side.y,...n,...c,
+                        ...v[1],1*tex.side.w+tex.side.x,0*tex.side.h+tex.side.y,...n,...c,
+                        ...v[2],0*tex.side.w+tex.side.x,0*tex.side.h+tex.side.y,...n,...c,
+                        ...v[3],0*tex.side.w+tex.side.x,1*tex.side.h+tex.side.y,...n,...c,
                     ]
                     
                     index.push(
@@ -618,16 +625,112 @@ D.createMeshData=(params)=>{
                         vl,2+vl,3+vl
                     )
                     
-                    for(let i=0,l=_verts.length;i<l;i+=11){
+                    for(let i=0,l=_verts.length;i<l;i+=D.meshKeyAmount){
                         
                         for(let k in order){
                             
-                            verts.push(_verts[i+key[order[k]]])
+                            verts.push(_verts[i+D.meshKey[order[k]]])
                         }
                     }
                     
                 }
             
+            break
+            
+            case 'cylinder':
+                
+                {
+                    
+                    let x=t.x||0,
+                        y=t.y||0,
+                        z=t.z||0,
+                        rx=t.rx||0,
+                        ry=t.ry||0,
+                        rz=t.rz||0,
+                        rad=t.radius,
+                        rad2=t.radius2??t.radius,
+                        detail=t.detail,
+                        hei=t.height,
+                        r=t.r||0,
+                        g=t.g||0,
+                        b=t.b||0,
+                        a=t.a||1,
+                        order=params.order,
+                        vl=params.vl+(verts.length/order.length),
+                        _quat=quat.fromEuler([],rx,ry,rz),
+                        __verts=[],
+                        _index=[],
+                        tex=t.textureMapping||{top:{x:0,y:0,w:1,h:1},side:{x:0,y:0,w:1,h:1},bottom:{x:0,y:0,w:1,h:1}}
+                    
+                    for(let _t=0,inc=D.TWO_PI/detail;_t<=D.TWO_PI;_t+=inc){
+                        
+                        let t1=_t-inc*0.5,t2=_t+inc*0.5
+                        __verts.push(
+                            Math.cos(t1)*rad,Math.sin(t1)*rad,hei*0.5,(1.0-(t1/D.TWO_PI))*tex.side.w+tex.side.x,1*tex.side.h+tex.side.y,Math.cos(t1),Math.sin(t1),0,r,g,b,a,
+                            Math.cos(t1)*rad2,Math.sin(t1)*rad2,-hei*0.5,(1.0-(t1/D.TWO_PI))*tex.side.w+tex.side.x,0*tex.side.h+tex.side.y,Math.cos(t1),Math.sin(t1),0,r,g,b,a,
+                            Math.cos(t2)*rad,Math.sin(t2)*rad,hei*0.5,(1.0-(t2/D.TWO_PI))*tex.side.w+tex.side.x,1*tex.side.h+tex.side.y,Math.cos(t2),Math.sin(t2),0,r,g,b,a,
+                            Math.cos(t2)*rad2,Math.sin(t2)*rad2,-hei*0.5,(1.0-(t2/D.TWO_PI))*tex.side.w+tex.side.x,0*tex.side.h+tex.side.y,Math.cos(t2),Math.sin(t2),0,r,g,b,a)
+                        
+                        let _vl=__verts.length/D.meshKeyAmount
+                        _index.push(_vl,_vl+1,_vl+2,_vl+3,_vl+2,_vl+1)
+                    }
+                    
+                    let _v=__verts.length/D.meshKeyAmount
+                    
+                    for(let _t=0,inc=D.TWO_PI/detail;_t<=D.TWO_PI;_t+=inc){
+                        
+                        let t1=_t-inc*0.5,t2=_t+inc*0.5
+                        __verts.push(
+                            Math.cos(t1)*rad,Math.sin(t1)*rad,hei*0.5,(Math.cos(t1)*0.5+0.5)*tex.bottom.w+tex.bottom.x,-(Math.sin(t1)*0.5+0.5)*tex.bottom.h+tex.bottom.y,0,0,1,r,g,b,a,
+                            Math.cos(t2)*rad,Math.sin(t2)*rad,hei*0.5,(Math.cos(t2)*0.5+0.5)*tex.bottom.w+tex.bottom.x,-(Math.sin(t2)*0.5+0.5)*tex.bottom.h+tex.bottom.y,0,0,1,r,g,b,a)
+                    }
+                    for(let l=__verts.length/D.meshKeyAmount,i=_v;i<l-1;i++){
+                        
+                        _index.push(_v,i,i+2)
+                    }
+                    _v=__verts.length/D.meshKeyAmount
+                    for(let _t=0,inc=D.TWO_PI/detail;_t<=D.TWO_PI;_t+=inc){
+                        
+                        let t1=_t-inc*0.5,t2=_t+inc*0.5
+                        __verts.push(
+                            
+                            Math.cos(t1)*rad2,Math.sin(t1)*rad2,-hei*0.5,(Math.cos(t1)*0.5+0.5)*tex.top.w+tex.top.x,(Math.sin(t1)*0.5+0.5)*tex.top.h+tex.top.y,0,0,-1,r,g,b,a,
+                            Math.cos(t2)*rad2,Math.sin(t2)*rad2,-hei*0.5,(Math.cos(t2)*0.5+0.5)*tex.top.w+tex.top.x,(Math.sin(t2)*0.5+0.5)*tex.top.h+tex.top.y,0,0,-1,r,g,b,a)
+                    }
+                    for(let l=__verts.length/D.meshKeyAmount,i=_v;i<l;i++){
+                        
+                        _index.push(i,i-1,_v)
+                    }
+                    
+                    for(let i in _index){
+                        
+                        index.push(_index[i]+vl)
+                    }
+                    
+                    for(let i=0;i<__verts.length;i+=D.meshKeyAmount){
+                        
+                            let rotated=vec3.transformQuat([],[__verts[i],__verts[i+1],__verts[i+2]],_quat)
+                            __verts[i]=rotated[0]+x
+                            __verts[i+1]=rotated[1]+y
+                            __verts[i+2]=rotated[2]+z
+                            
+                            rotated=vec3.transformQuat(rotated,[__verts[i+5],__verts[i+6],__verts[i+7]],_quat)
+                            
+                            __verts[i+5]=rotated[0]
+                            __verts[i+6]=rotated[1]
+                            __verts[i+7]=rotated[2]
+                            
+                    }
+                    
+                    for(let i=0,l=__verts.length;i<l;i+=D.meshKeyAmount){
+                        
+                        for(let k in params.order){
+                            
+                            verts.push(__verts[i+D.meshKey[params.order[k]]])
+                        }
+                    }
+                }
+                
             break
         }
     }
@@ -705,24 +808,9 @@ D.createOBJMeshData=(params)=>{
         
     }
     
-    let key={
-        
-        x:0,
-        y:1,
-        z:2,
-        u:3,
-        v:4,
-        nx:5,
-        ny:6,
-        nz:7,
-        r:8,
-        g:9,
-        b:10
-    }
-    
     for(let i in faces){
         
-        let v=[],vt=[],vn=[],vl=(_verts.length/11)+params.vl,count=0
+        let v=[],vt=[],vn=[],vl=(_verts.length/key.length)+params.vl,count=0
         
         for(let j in faces[i]){
             
@@ -740,7 +828,7 @@ D.createOBJMeshData=(params)=>{
     
     let verts=[]
     
-    for(let i=0;i<_verts.length;i+=11){
+    for(let i=0;i<_verts.length;i+=key.length){
         
         for(let k in order){
             
