@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html>
+
+
+
+<title>D.js Texture and Alpha Demo</title>
+
+<canvas id='gl-canvas'></canvas>
+<canvas id='ui-canvas'></canvas>
+
+<style>
+    
+    body{
+        
+        margin:0;
+        overflow:hidden;
+    }
+    
+</style>
+
+<script src='https://cdnjs.cloudflare.com/ajax/libs/gl-matrix/2.8.1/gl-matrix-min.js'></script>
+
+
+<script src='https://cdn.jsdelivr.net/gh/Dddatt/D.js@v1.1.0/index.js'></script>
+
+
+<script type='application/javascript'>
+
+function main(){
+
+let width=window.innerWidth,height=window.innerHeight,aspect=width/height
+
+let glCanvas=document.getElementById('gl-canvas')
+let uiCanvas=document.getElementById('ui-canvas')
+
+glCanvas.width=width
+glCanvas.height=height
+uiCanvas.width=Math.max(width,500)
+uiCanvas.height=Math.max(height,500)
+
+let ctx=uiCanvas.getContext('2d')
+let _gl=D.getContext(glCanvas,'webgl2',{antialias:1})
+
+glCanvas.style.display='none'
+
+D.viewport(0,0,width,height)
+D.enable3D()
+D.enableBlend()
+
+let program=D.createProgram(
+
+`#version 300 es
+
+precision lowp float;
+    
+    in vec3 vertPos;
+    in vec3 vertUV;
+    in vec3 vertNormal;
+    
+    uniform mat4 viewMatrix;
+    
+    out vec3 pixUV;
+    out vec3 pixPos;
+    out vec3 pixNormal;
+    
+    void main(){
+        
+        vec4 pos=viewMatrix*vec4(vertPos,1);
+        
+        pixNormal=vertNormal;
+        pixPos=vertPos;
+        pixUV=vertUV;
+        gl_Position=pos;
+        
+    }
+`,
+
+`#version 300 es
+
+precision lowp float;
+    
+    uniform sampler2D tex;
+    
+    in vec3 pixUV;
+    in vec3 pixNormal;
+    in vec3 pixPos;
+    
+    out vec4 FragColor;
+    
+    void main(){
+        
+        vec3 normal=normalize(pixNormal);
+        float diffuse=dot(normalize(vec3(10,20,5)-pixPos),normal)*0.3+0.7;
+        
+        FragColor=vec4(texture(tex,pixUV.xy).rgb*diffuse,pixUV.z);
+    }
+`)
+
+let m=D.createMeshData({
+    
+    meshes:[
+        
+        {type:'cylinder',x:-1,y:0,z:0,radius:0.5,detail:15,height:1,r:1,g:0.5,b:0,rx:90,textureMapping:{top:{x:0,y:0,w:1,h:1},side:{x:0.5,y:0,w:4,h:1},bottom:{x:0,y:0,w:1,h:1}}},
+        
+        {type:'plane',x:0,y:1,z:-1,size:1,rx:90,textureMapping:{side:{x:0,y:0,w:-1,h:-1}}},
+        
+        {type:'sphere',x:1,y:0,z:0,detail:3,radius:0.5,textureMapping:{side:{x:0,y:0,w:1,h:1}}},
+        
+        {type:'box',x:0,y:0,z:2,w:1,h:1,l:1,a:0.2}
+    ],
+    
+    order:['x','y','z','u','v','a','nx','ny','nz']
+    
+})
+
+let mesh=D.createMesh(
+    
+    m,
+    
+    [
+        ['vertPos',3,9*4,0],
+        ['vertUV',3,9*4,12],
+        ['vertNormal',3,9*4,20],
+    ]
+)
+
+
+let proj,mat=mat4.identity(new Float32Array(16))
+
+let TIME=0
+
+let then,dt,yaw=0,pitch=0,zoom=4
+
+uiCanvas.onmousedown=()=>uiCanvas.requestPointerLock()
+
+uiCanvas.onmousemove=(e)=>{
+    
+	yaw+=e.movementX*0.0075
+	pitch+=e.movementY*0.0075
+    
+	pitch=pitch>D.HALF_PI?D.HALF_PI:pitch<-D.HALF_PI?-D.HALF_PI:pitch
+}
+
+uiCanvas.onwheel=(e)=>{
+    
+	e.preventDefault()
+	zoom+=e.deltaY*0.005
+    
+	zoom=zoom>20?20:zoom<1?1:zoom
+}
+
+document.onwheel=()=>{}
+
+proj=D.prespectiveMatrix(80,aspect,0.1,1000)
+
+D.useProgram(program)
+
+ctx.fillStyle='white'
+ctx.fillRect(0,0,500,500)
+ctx.fillStyle='green'
+ctx.font='bold 178px arial'
+ctx.fillText('Hi :D',55,305)
+
+let tex=D.createTexture(500,500,ctx.getImageData(0,0,500,500),'LINEAR','REPEAT')
+
+
+function loop(now){
+    
+    if(!then){now=window.performance.now();then=now}
+    
+    dt=(now-then)*0.0025
+    
+    TIME+=dt
+    
+    D.setViewMatrix(mat,proj,0,0,0,yaw,pitch,0,zoom)
+    D.clear(0.4)
+    D.setUniform('viewMatrix',mat)
+    D.renderMesh(mesh)
+    
+    ctx.drawImage(glCanvas,0,0)
+    
+    then=now
+    
+    window.parent.raf=window.requestAnimationFrame(loop)
+}
+
+if(window.parent.raf){
+    
+    window.cancelAnimationFrame(window.parent.raf)
+}
+
+loop()
+
+
+
+}
+
+main()
+
+</script>
+
+</html>
