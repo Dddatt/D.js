@@ -225,7 +225,7 @@ D.renderMesh=(mesh)=>{
     
         mesh.instancedAttribFunction(D.gl,D.currentProgram.locations)
         
-        D.gl.drawElementsInstanced(mesh.wireframe?D.gl.LINES:D.gl.TRIANGLES,mesh.indexAmount,gl.UNSIGNED_SHORT,0,mesh.instanceData.length/mesh.instanceSize)
+        D.gl.drawElementsInstanced(mesh.wireframe?D.gl.LINES:D.gl.TRIANGLES,mesh.indexAmount,D.gl.UNSIGNED_SHORT,0,mesh.instanceData.length/mesh.instanceSize)
         
         mesh.clearDivisorsFunction(D.gl,D.currentProgram.locations)
         
