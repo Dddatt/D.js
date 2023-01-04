@@ -4,13 +4,15 @@ A fast, simple, and flexible WebGL &amp; WebGL2 library.<br><br>
 Deferred Shading Demo: https://dddatt.github.io/D.js/deferred_shading_demo.html<br>
 Instancing Demo: https://dddatt.github.io/D.js/instancing_demo.html<br>
 OBJ Demo: https://dddatt.github.io/D.js/obj_demo.html<br>
-Texture and Alpha Demo: https://dddatt.github.io/D.js/texture_and_alpha_demo.html<br>
+Texture and Alpha Demo: https://dddatt.github.io/D.js/texture_and_alpha_demo.html<br><br>
 
-# Documentation v1.1
+Only version 1.1.1 has a documentation. v2.0.0 brings major changes and prob won't have a doc, so don't use it cuz it's confusing.
+
+# Documentation v1.1.1
 
 Notes:
 
-	Add a script with the src 'https://cdn.jsdelivr.net/gh/Dddatt/D.js@v1.1.0/index.js' to a program to use D.js
+	Add a script with the src 'https://cdn.jsdelivr.net/gh/Dddatt/D.js@v1.1.1/index.js' to a program to use D.js
     
 	D.js must be used with glMatrix! Add a script with this src: 'https://cdnjs.cloudflare.com/ajax/libs/gl-matrix/2.8.1/gl-matrix-min.js' to your program BEFORE the D.js script
 
