@@ -1,5 +1,7 @@
 window.D=(function(D){
 
+let gl
+
 if(!window.vec3||!window.mat3||!window.vec2||!window.mat2||!window.vec4||!window.mat4||!window.quat){
     
     alert('The D.js library is dependent on glMatrix! Make sure it is imported and initalized before D.js. Import glMatrix with a script using this scr: https://cdnjs.cloudflare.com/ajax/libs/gl-matrix/2.8.1/gl-matrix-min.js')
@@ -8,28 +10,47 @@ if(!window.vec3||!window.mat3||!window.vec2||!window.mat2||!window.vec4||!window
 
 D.PI=Math.PI
 D.HALF_PI=Math.PI*0.5
+D.QUATER_PI=Math.PI*0.25
+D.THIRD_PI=Math.PI/3
 D.TWO_PI=Math.PI*2
 D.TO_RAD=Math.PI/180
 D.TO_DEG=180/Math.PI
 D.INV_255=1/255
+D.SQRT_2=Math.sqrt(2)
+D.SQRT_HALF=Math.sqrt(0.5)
+D.NEG_X=[-1,0,0]
+D.X=[1,0,0]
+D.NEG_Y=[0,1,0]
+D.Y=[0,1,0]
+D.NEG_Z=[0,0,-1]
+D.Z=[0,0,1]
+D.ORIGIN=[0,0,0]
 D.random=(min,max)=>Math.random()*(max-min)+min
 D.constrain=(x,a,b)=>x<a?a:x>b?b:x
+D.map=(value,istart,istop,ostart,ostop)=>ostart+(ostop-ostart)*((value-istart)/(istop-istart))
+D.lerp=(a,b,x)=>x*(b-a)+a
+D.addCommas=(s)=>{for(let i=s.length-3;i>0;i-=3){s=s.substring(0,i)+','+s.substr(i,s.length)}return s}
+D.doGrammar=(s)=>{let str=s.slice(),_s='';for(let i in str){if(str[i].toUpperCase()===str[i]){_s=_s+' '+str[i]}else{_s=_s+str[i]}}return _s[0].toUpperCase()+_s.substring(1,_s.length-1)}
+D.doTime=(s)=>(s>=60?((0.0166666667*s)|0)+'m ':'')+(s|0)%60+'s'
+D.doPlural=(s)=>{if(s[s.length-1]==='s'){return s}if(s[s.length-1]==='y'){return s.substr(0,s.length - 1)+'ies'}if(s[s.length-1]==='x'){return s+'es'}return s+'s'}
+D.DEFAULT_POST_PROCESSING_VSH=`#version 300 es\nprecision lowp float;in vec2 vertPos;out vec2 pixUV;void main(){pixUV=vertPos*0.5+0.5;gl_Position=vec4(vertPos,0,1);}`
 
 D.getContext=(canv,data={})=>{
     
-    D.gl=canv.getContext('webgl2',data)
+    gl=canv.getContext('webgl2',data)
+    D.gl=gl
     
-    if(!D.gl){
+    if(!gl){
         
         alert('WebGL2 is not supported!')
     }
     
-    return D.gl
+    return gl
 }
 
 D.getExtension=(e)=>{
     
-    if(!D.gl.getExtension(e)){
+    if(!gl.getExtension(e)){
         
         alert('WebGL2 extension "'+e+'" is not supported!')
     }
@@ -37,21 +58,21 @@ D.getExtension=(e)=>{
 
 D.clear=(r=0,g=r,b=r,a=1)=>{
     
-    D.gl.clearColor(r,g,b,a)
-    D.gl.clear(D.gl.COLOR_BUFFER_BIT|D.gl.DEPTH_BUFFER_BIT)
+    gl.clearColor(r,g,b,a)
+    gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT)
 }
 
 D.viewport=(x,y,w,h)=>{
     
     D.viewportWidth=w
     D.viewportHeight=h
-    D.gl.viewport(x,y,w,h)
+    gl.viewport(x,y,w,h)
     D.aspect=w/h
 }
 
 D.createProgram=(vsh_src,fsh_src)=>{
     
-    let gl=D.gl,vshText=vsh_src.trim(),fshText=fsh_src.trim()
+    let vshText=vsh_src.trim(),fshText=fsh_src.trim()
     
     vsh=gl.createShader(gl.VERTEX_SHADER)
     fsh=gl.createShader(gl.FRAGMENT_SHADER)
@@ -64,7 +85,6 @@ D.createProgram=(vsh_src,fsh_src)=>{
     gl.attachShader(p,vsh)
     gl.attachShader(p,fsh)
     gl.linkProgram(p)
-    gl.useProgram(p)
     
     let locations={},types={},text=vsh_src.trim().split('\n')
     
@@ -120,12 +140,14 @@ D.createProgram=(vsh_src,fsh_src)=>{
         }[types[i]]
     }
     
-    return {gl:p,locations:locations,uniformTypes:types}
+    p={gl:p,locations:locations,uniformTypes:types}
+    
+    D.useProgram(p)
+    
+    return p 
 }
 
 D.setUniform=(name,data)=>{
-    
-    let gl=D.gl
     
     if(D.currentProgram.uniformTypes[name][0]==='M'){
         
@@ -140,7 +162,7 @@ D.setUniform=(name,data)=>{
 
 D.useProgram=(program)=>{
     
-    D.gl.useProgram(program.gl)
+    gl.useProgram(program.gl)
     D.currentProgram=program
 }
 
@@ -148,7 +170,7 @@ D.createMesh=(data,pointers,instancedPointers,useVAO=true,type='STATIC')=>{
     
     type=type.toUpperCase()+'_DRAW'
     
-    let gl=D.gl,mesh={},pointerStr=''
+    let mesh={},pointerStr=''
     
     mesh.verts=Float32Array.from(data.verts)
     mesh.index=Uint32Array.from(data.index)
@@ -221,8 +243,6 @@ D.createMesh=(data,pointers,instancedPointers,useVAO=true,type='STATIC')=>{
 
 D.updateMesh=(mesh,data)=>{
     
-    let gl=D.gl
-    
     if(data){
         
         mesh.verts=Float32Array.from(data.verts)
@@ -255,33 +275,33 @@ D.renderMesh=(mesh)=>{
     
     if(mesh.instanceData){
         
-        D.gl.bindBuffer(D.gl.ARRAY_BUFFER,mesh.instanceBuffer)
-        D.gl.bufferData(D.gl.ARRAY_BUFFER,Float32Array.from(mesh.instanceData),D.gl.DYNAMIC_DRAW)
+        gl.bindBuffer(gl.ARRAY_BUFFER,mesh.instanceBuffer)
+        gl.bufferData(gl.ARRAY_BUFFER,Float32Array.from(mesh.instanceData),gl.DYNAMIC_DRAW)
     
-        mesh.instancedAttribFunction(D.gl,D.currentProgram.locations)
+        mesh.instancedAttribFunction(gl,D.currentProgram.locations)
         
-        D.gl.drawElementsInstanced(D.gl[mesh.primitive],mesh.indexAmount,gl.UNSIGNED_INT,0,mesh.instanceData.length/mesh.instanceSize)
+        gl.drawElementsInstanced(gl[mesh.primitive],mesh.indexAmount,gl.UNSIGNED_INT,0,mesh.instanceData.length/mesh.instanceSize)
         
-        mesh.clearDivisorsFunction(D.gl,D.currentProgram.locations)
+        mesh.clearDivisorsFunction(gl,D.currentProgram.locations)
         
     } else {
         
         if(mesh.useVAO){
             
-            D.gl.bindVertexArray(mesh.VAO)
+            gl.bindVertexArray(mesh.VAO)
             
         } else {
             
-            D.gl.bindBuffer(D.gl.ARRAY_BUFFER,mesh.vertBuffer)
-            D.gl.bindBuffer(D.gl.ELEMENT_ARRAY_BUFFER,mesh.indexBuffer)
-            mesh.attribFunction(D.gl,D.currentProgram.locations)
+            gl.bindBuffer(gl.ARRAY_BUFFER,mesh.vertBuffer)
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,mesh.indexBuffer)
+            mesh.attribFunction(gl,D.currentProgram.locations)
         }
         
-        D.gl.drawElements(D.gl[mesh.primitive],mesh.indexAmount,D.gl.UNSIGNED_INT,0)
+        gl.drawElements(gl[mesh.primitive],mesh.indexAmount,gl.UNSIGNED_INT,0)
     }
 }
 
-D.unbindVAO=()=>D.gl.bindVertexArray(null)
+D.unbindVAO=()=>gl.bindVertexArray(null)
 
 D.clearInstances=(mesh)=>mesh.instanceData=[]
 
@@ -292,22 +312,22 @@ D.addInstance=(mesh,data)=>{
 
 D.enable3D=()=>{
     
-    D.gl.enable(D.gl.CULL_FACE)
-    D.gl.cullFace(D.gl.BACK)
-    D.gl.enable(D.gl.DEPTH_TEST)
-    D.gl.depthFunc(D.gl.LEQUAL)
+    gl.enable(gl.CULL_FACE)
+    gl.cullFace(gl.BACK)
+    gl.enable(gl.DEPTH_TEST)
+    gl.depthFunc(gl.LEQUAL)
 }
 
-D.enable=(t)=>D.gl.enable(D.gl[t])
-D.disable=(t)=>D.gl.disable(D.gl[t])
-D.cullFace=(t)=>D.gl.cullFace(D.gl[t])
-D.depthFunc=(t)=>D.gl.depthFunc(D.gl[t])
-D.blendFunc=(t1,t2)=>D.gl.blendFunc(D.gl[t1],D.gl[t2])
+D.enable=(t)=>gl.enable(gl[t])
+D.disable=(t)=>gl.disable(gl[t])
+D.cullFace=(t)=>gl.cullFace(gl[t])
+D.depthFunc=(t)=>gl.depthFunc(gl[t])
+D.blendFunc=(t1,t2)=>gl.blendFunc(gl[t1],gl[t2])
 
 D.enableBlend=()=>{
     
-    D.gl.enable(D.gl.BLEND)
-    D.gl.blendFunc(D.gl.SRC_ALPHA,D.gl.ONE_MINUS_SRC_ALPHA)
+    gl.enable(gl.BLEND)
+    gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA)
 }
 
 D.prespectiveMatrix=(fov=80,aspect=D.aspect,zn=0.1,zf=1000)=>{
@@ -324,7 +344,7 @@ D.prespectiveMatrix=(fov=80,aspect=D.aspect,zn=0.1,zf=1000)=>{
 }
 
 D.createIdentityMatrix=()=>mat4.identity(new Float32Array(16))
-D.READ_ONLY_IDENTITY_MATRIX=D.createIdentityMatrix()
+D.IDENTITY_MATRIX=D.createIdentityMatrix()
 
 D.setViewMatrix=(mat,proj,x,y,z,yaw,pitch,roll=0,zoomBack=0)=>{
     
@@ -336,6 +356,8 @@ D.setViewMatrix=(mat,proj,x,y,z,yaw,pitch,roll=0,zoomBack=0)=>{
         mat4.rotateZ(mat,mat,roll)
     }
     
+    let d=[mat[2],mat[6],mat[10]]
+    
     let p=[-x-mat[2]*zoomBack,-y-mat[6]*zoomBack,-z-mat[10]*zoomBack]
     
     mat4.translate(mat,mat,p)
@@ -344,12 +366,12 @@ D.setViewMatrix=(mat,proj,x,y,z,yaw,pitch,roll=0,zoomBack=0)=>{
     
     mat4.multiply(mat,proj,mat)
     
-    return {camPos:p,modelMatrix:m}
+    return {camPos:p,modelMatrix:m,camDir:d}
 }
 
 D.createTexture=(width=D.viewportWidth,height=D.viewportHeight,data=null,filter='LINEAR',wrap='CLAMP_TO_EDGE',format='RGBA',internalFormat='RGBA',type='UNSIGNED_BYTE',mipmap=false)=>{
     
-    let gl=D.gl,t=gl.createTexture()
+    let t=gl.createTexture()
     gl.bindTexture(gl.TEXTURE_2D,t)
     gl.texImage2D(gl.TEXTURE_2D,0,gl[format],width,height,0,gl[internalFormat],gl[type],data)
     gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl[filter])
@@ -365,11 +387,11 @@ D.createTexture=(width=D.viewportWidth,height=D.viewportHeight,data=null,filter=
     return {texture:t,width:width,height:height}
 }
 
-D.bindTexture=(texture)=>D.gl.bindTexture(D.gl.TEXTURE_2D,texture===null?null:texture.texture)
+D.bindTexture=(texture)=>gl.bindTexture(gl.TEXTURE_2D,texture===null?null:texture.texture)
 
 D.createFramebuffer=(target=false,depth=false,attachment='COLOR_ATTACHMENT0')=>{
     
-    let gl=D.gl,f=gl.createFramebuffer()
+    let f=gl.createFramebuffer()
     gl.bindFramebuffer(gl.FRAMEBUFFER,f)
     
     if(target)
@@ -390,11 +412,11 @@ D.createFramebuffer=(target=false,depth=false,attachment='COLOR_ATTACHMENT0')=>{
     return f
 }
 
-D.bindFramebuffer=(framebuffer)=>D.gl.bindFramebuffer(D.gl.FRAMEBUFFER,framebuffer)
+D.bindFramebuffer=(framebuffer)=>gl.bindFramebuffer(gl.FRAMEBUFFER,framebuffer)
 
 D.drawBuffers=(params)=>{
     
-    let gl=D.gl,arr=[]
+    let arr=[]
     
     for(let i in params){
         
@@ -407,8 +429,6 @@ D.drawBuffers=(params)=>{
 }
 
 D.activeTextures=(params)=>{
-    
-    let gl=D.gl
     
     for(let i in params){
         
