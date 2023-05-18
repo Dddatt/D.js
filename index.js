@@ -166,7 +166,7 @@ D.useProgram=(program)=>{
     D.currentProgram=program
 }
 
-D.createMesh=(data,pointers,instancedPointers,useVAO=true,type='STATIC')=>{
+D.createMesh=(data,pointers,instancedPointers,type='STATIC')=>{
     
     type=type.toUpperCase()+'_DRAW'
     
@@ -178,15 +178,7 @@ D.createMesh=(data,pointers,instancedPointers,useVAO=true,type='STATIC')=>{
     
     mesh.wireframe=data.wireframe
     mesh.indexAmount=mesh.index.length
-    mesh.useVAO=useVAO
     mesh.primitive=data.primitive
-    
-    if(useVAO){
-        
-        mesh.VAO=gl.createVertexArray()
-        
-        gl.bindVertexArray(mesh.VAO)
-    }
     
     mesh.vertBuffer=gl.createBuffer()
     mesh.indexBuffer=gl.createBuffer()
@@ -201,7 +193,7 @@ D.createMesh=(data,pointers,instancedPointers,useVAO=true,type='STATIC')=>{
         
         let p=pointers[i]
         
-        pointerStr+='gl.vertexAttribPointer(locations["'+p[0]+'"],'+p[1]+',gl.FLOAT,gl.FALSE,'+p[2]+','+p[3]+');'+(useVAO?'gl.enableVertexAttribArray(locations["'+p[0]+'"]);':'')
+        pointerStr+='gl.vertexAttribPointer(locations["'+p[0]+'"],'+p[1]+',gl.FLOAT,gl.FALSE,'+p[2]+','+p[3]+');'
         
     }
     
@@ -232,10 +224,6 @@ D.createMesh=(data,pointers,instancedPointers,useVAO=true,type='STATIC')=>{
         
         mesh.instanceBuffer=gl.createBuffer()
         
-    } else if(useVAO){
-        
-        mesh.attribFunction(gl,D.currentProgram.locations)
-        gl.bindVertexArray(null)
     }
     
     return mesh
@@ -253,26 +241,19 @@ D.updateMesh=(mesh,data)=>{
     
     mesh.indexAmount=mesh.index.length
     
-    if(mesh.useVAO){
-        
-        gl.bindVertexArray(mesh.VAO)
-    }
-    
     gl.bindBuffer(gl.ARRAY_BUFFER,mesh.vertBuffer)
     gl.bufferData(gl.ARRAY_BUFFER,mesh.verts,gl[mesh.type])
     
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,mesh.indexBuffer)
     gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,mesh.index,gl[mesh.type])
-    
-    if(mesh.useVAO){
-        
-        mesh.attribFunction(gl,D.currentProgram.locations)
-        gl.bindVertexArray(null)
-    }
 }
 
 D.renderMesh=(mesh)=>{
     
+    gl.bindBuffer(gl.ARRAY_BUFFER,mesh.vertBuffer)
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,mesh.indexBuffer)
+    mesh.attribFunction(gl,D.currentProgram.locations)
+        
     if(mesh.instanceData){
         
         gl.bindBuffer(gl.ARRAY_BUFFER,mesh.instanceBuffer)
@@ -286,22 +267,9 @@ D.renderMesh=(mesh)=>{
         
     } else {
         
-        if(mesh.useVAO){
-            
-            gl.bindVertexArray(mesh.VAO)
-            
-        } else {
-            
-            gl.bindBuffer(gl.ARRAY_BUFFER,mesh.vertBuffer)
-            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,mesh.indexBuffer)
-            mesh.attribFunction(gl,D.currentProgram.locations)
-        }
-        
         gl.drawElements(gl[mesh.primitive],mesh.indexAmount,gl.UNSIGNED_INT,0)
     }
 }
-
-D.unbindVAO=()=>gl.bindVertexArray(null)
 
 D.clearInstances=(mesh)=>mesh.instanceData=[]
 
@@ -346,27 +314,78 @@ D.prespectiveMatrix=(fov=80,aspect=D.aspect,zn=0.1,zf=1000)=>{
 D.createIdentityMatrix=()=>mat4.identity(new Float32Array(16))
 D.IDENTITY_MATRIX=D.createIdentityMatrix()
 
-D.setViewMatrix=(mat,proj,x,y,z,yaw,pitch,roll=0,zoomBack=0)=>{
+D.setViewMatrix=(mat,proj,x,y,z,yaw,pitch,zoomBack=0)=>{
     
-    mat4.fromXRotation(mat,pitch)
-    mat4.rotateY(mat,mat,yaw)
+    var cp=Math.cos(pitch),sp=Math.sin(pitch),cy=Math.cos(yaw),sy=Math.sin(yaw);
     
-    if(roll){
-        
-        mat4.rotateZ(mat,mat,roll)
-    }
+    mat[5]=cp;
+    mat[6]=sp;
+    mat[9]=-sp;
+    mat[10]=cp;
     
-    let d=[mat[2],mat[6],mat[10]]
+    mat[0]=cy;
+    mat[1]=sp*sy;
+    mat[2]=-cp*sy;
+    mat[8]=sy;
+    mat[9]=-sp*cy;
+    mat[10]=cp*cy;
     
-    let p=[-x-mat[2]*zoomBack,-y-mat[6]*zoomBack,-z-mat[10]*zoomBack]
+    var a00=mat[0],
+    a01=mat[1],
+    a02=mat[2],
+    a11=mat[5],
+    a12=mat[6],
+    a20=mat[8],
+    a21=mat[9],
+    a22=mat[10];
     
-    mat4.translate(mat,mat,p)
+    x+=mat[2]*zoomBack
+    y+=mat[6]*zoomBack
+    z+=mat[10]*zoomBack
+    
+    mat[12]=a00*-x-a20*z;
+    mat[13]=a01*-x-a11*y-a21*z;
+    mat[14]=a02*-x-a12*y-a22*z;
+    mat[15]=1;
     
     let m=mat.slice()
     
-    mat4.multiply(mat,proj,mat)
+    let d=[mat[2],mat[6],mat[10]]
     
-    return {camPos:p,modelMatrix:m,camDir:d}
+    var a00=proj[0],a11=proj[5],a21=proj[9],a22=proj[10],a23=proj[11],a32=proj[14],b0=mat[0],b1=mat[1],b2=mat[2],b3=0;
+    
+    mat[0]=b0*a00;
+    mat[1]=b1*a11+b2*a21;
+    mat[2]=b2*a22+b3*a32;
+    mat[3]=b2*a23;
+    
+    b1=mat[5];
+    b2=mat[6];
+    
+    mat[4]=0;
+    mat[5]=b1*a11;
+    mat[6]=b2*a22;
+    mat[7]=b2*a23;
+    
+    b0=mat[8];
+    b1=mat[9];
+    b2=mat[10];
+    
+    mat[8]=b0*a00;
+    mat[9]=b1*a11+b2*a21;
+    mat[10]=b2*a22;
+    mat[11]=b2*a23;
+    
+    b0=mat[12];
+    b1=mat[13];
+    b2=mat[14];
+    
+    mat[12]=b0*a00;
+    mat[13]=b1*a11+b2*a21;
+    mat[14]=b2*a22+a32;
+    mat[15]=b2*a23;
+    
+    return {camPos:[x,y,z],modelMatrix:m,camDir:d}
 }
 
 D.createTexture=(width=D.viewportWidth,height=D.viewportHeight,data=null,filter='LINEAR',wrap='CLAMP_TO_EDGE',format='RGBA',internalFormat='RGBA',type='UNSIGNED_BYTE',mipmap=false)=>{
