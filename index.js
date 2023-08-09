@@ -2,12 +2,6 @@ window.D=(function(D){
 
 let gl
 
-if(!window.vec3||!window.mat3||!window.vec2||!window.mat2||!window.vec4||!window.mat4||!window.quat){
-    
-    alert('The D.js library is dependent on glMatrix! Make sure it is imported and initalized before D.js. Import glMatrix with a script using this scr: https://cdnjs.cloudflare.com/ajax/libs/gl-matrix/2.8.1/gl-matrix-min.js')
-    console.log('error using glMatrix')
-}
-
 D.PI=Math.PI
 D.HALF_PI=Math.PI*0.5
 D.QUATER_PI=Math.PI*0.25
@@ -29,50 +23,52 @@ D.random=(min,max)=>Math.random()*(max-min)+min
 D.constrain=(x,a,b)=>x<a?a:x>b?b:x
 D.map=(value,istart,istop,ostart,ostop)=>ostart+(ostop-ostart)*((value-istart)/(istop-istart))
 D.lerp=(a,b,x)=>x*(b-a)+a
+D.floatize=(n)=>n-(n|0)>0?n:n+'.'
 D.addCommas=(s)=>{for(let i=s.length-3;i>0;i-=3){s=s.substring(0,i)+','+s.substr(i,s.length)}return s}
 D.doGrammar=(s)=>{let str=s.slice(),_s='';for(let i in str){if(str[i].toUpperCase()===str[i]){_s=_s+' '+str[i]}else{_s=_s+str[i]}}return _s[0].toUpperCase()+_s.substring(1,_s.length-1)}
 D.doTime=(s)=>(s>=60?((0.0166666667*s)|0)+'m ':'')+(s|0)%60+'s'
-D.doPlural=(s)=>{if(s[s.length-1]==='s'){return s}if(s[s.length-1]==='y'){return s.substr(0,s.length - 1)+'ies'}if(s[s.length-1]==='x'){return s+'es'}return s+'s'}
-D.DEFAULT_POST_PROCESSING_VSH=`#version 300 es\nprecision lowp float;in vec2 vertPos;out vec2 pixUV;void main(){pixUV=vertPos*0.5+0.5;gl_Position=vec4(vertPos,0,1);}`
+D.doPlural=(s)=>{if(s[s.length-1]==='s'){return s}if(s[s.length-1]==='y'){return s.substr(0,s.length-1)+'ies'}if(s[s.length-1]==='x'){return s+'es'}return s+'s'}
+D.DEFAULT_POST_PROCESSING_VSH=`#version 300 es\nprecision mediump float;in vec2 vertPos;out vec2 pixUV;void main(){pixUV=vertPos*0.5+0.5;gl_Position=vec4(vertPos,0,1);}`
+D.createIdentityMatrix=()=>mat4.identity(new Float32Array(16))
+D.IDENTITY_MATRIX=D.createIdentityMatrix()
+D.ETMPING={top:{x:0,y:0,w:0,h:0},bottom:{x:0,y:0,w:0,h:0},left:{x:0,y:0,w:0,h:0},right:{x:0,y:0,w:0,h:0},front:{x:0,y:0,w:0,h:0},back:{x:0,y:0,w:0,h:0}}
 
 D.getContext=(canv,data={})=>{
     
     gl=canv.getContext('webgl2',data)
     D.gl=gl
     
-    if(!gl){
-        
-        alert('WebGL2 is not supported!')
-    }
+    if(!gl) alert('WebGL2 is not supported!')
     
     return gl
 }
 
 D.getExtension=(e)=>{
     
-    if(!gl.getExtension(e)){
-        
-        alert('WebGL2 extension "'+e+'" is not supported!')
-    }
+    if(!gl.getExtension(e)) alert('WebGL2 extension "'+e+'" is not supported!')
 }
 
 D.clear=(r=0,g=r,b=r,a=1)=>{
     
     gl.clearColor(r,g,b,a)
-    gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT)
+    gl.clear(16640)
 }
 
 D.viewport=(x,y,w,h)=>{
     
     D.viewportWidth=w
     D.viewportHeight=h
-    gl.viewport(x,y,w,h)
     D.aspect=w/h
+    gl.viewport(x,y,w,h)
 }
 
-D.createProgram=(vsh_src,fsh_src)=>{
+D.createProgram=(vsh_src,fsh_src,debug=false)=>{
     
     let vshText=vsh_src.trim(),fshText=fsh_src.trim()
+    
+    vshText=vshText.replaceAll('D_INV_WIDTH',D.floatize(1/D.viewportWidth)).replaceAll('D_INV_HEIGHT',D.floatize(1/D.viewportHeight)).replaceAll('D_WIDTH',D.floatize(D.viewportWidth)).replaceAll('D_HEIGHT',D.floatize(D.viewportHeight)).replaceAll('D_ASPECT',D.floatize(D.aspect))
+    
+    fshText=fshText.replaceAll('D_INV_WIDTH',D.floatize(1/D.viewportWidth)).replaceAll('D_INV_HEIGHT',D.floatize(1/D.viewportHeight)).replaceAll('D_WIDTH',D.floatize(D.viewportWidth)).replaceAll('D_HEIGHT',D.floatize(D.viewportHeight)).replaceAll('D_ASPECT',D.floatize(D.aspect))
     
     vsh=gl.createShader(gl.VERTEX_SHADER)
     fsh=gl.createShader(gl.FRAGMENT_SHADER)
@@ -80,6 +76,12 @@ D.createProgram=(vsh_src,fsh_src)=>{
     gl.shaderSource(fsh,fshText)
     gl.compileShader(vsh)
     gl.compileShader(fsh)
+    
+    if(debug&&!gl.getShaderParameter(vsh,gl.COMPILE_STATUS))
+        console.error(vshText,gl.getShaderInfoLog(vsh))
+        
+    if(debug&&!gl.getShaderParameter(fsh,gl.COMPILE_STATUS))
+        console.error(fshText,gl.getShaderInfoLog(fsh))
     
     let p=gl.createProgram()
     gl.attachShader(p,vsh)
@@ -101,7 +103,6 @@ D.createProgram=(vsh_src,fsh_src)=>{
                 
                 gl.enableVertexAttribArray(locations[words[2]])
             }
-            
         }
     }
     
@@ -124,7 +125,7 @@ D.createProgram=(vsh_src,fsh_src)=>{
         
         types[i]={
             
-            float:'1f',
+            float:'1fv',
             vec2:'2fv',
             vec3:'3fv',
             vec4:'4fv',
@@ -133,6 +134,8 @@ D.createProgram=(vsh_src,fsh_src)=>{
             ivec3:'3iv',
             ivec4:'4iv',
             sampler2D:'1i',
+            isampler2D:'1i',
+            samplerCube:'1i',
             mat2:'Matrix2fv',
             mat3:'Matrix3fv',
             mat4:'Matrix4fv'
@@ -172,8 +175,8 @@ D.createMesh=(data,pointers,instancedPointers,type='STATIC')=>{
     
     let mesh={},pointerStr=''
     
-    mesh.verts=Float32Array.from(data.verts)
-    mesh.index=Uint32Array.from(data.index)
+    mesh.verts=data.verts
+    mesh.index=data.index
     mesh.type=type
     
     mesh.wireframe=data.wireframe
@@ -253,7 +256,7 @@ D.renderMesh=(mesh)=>{
     gl.bindBuffer(gl.ARRAY_BUFFER,mesh.vertBuffer)
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,mesh.indexBuffer)
     mesh.attribFunction(gl,D.currentProgram.locations)
-        
+    
     if(mesh.instanceData){
         
         gl.bindBuffer(gl.ARRAY_BUFFER,mesh.instanceBuffer)
@@ -298,9 +301,9 @@ D.enableBlend=()=>{
     gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA)
 }
 
-D.prespectiveMatrix=(fov=80,aspect=D.aspect,zn=0.1,zf=1000)=>{
+D.perspectiveMatrix=(fov=80,aspect=D.aspect,zn=0.1,zf=1000)=>{
     
-    let f=Math.tan(D.HALF_PI-fov*D.TO_RAD*0.5),
+    let f=Math.tan(1.57079632679-fov*0.008726646),
         rangeInv=1/(zn-zf)
         
     return new Float32Array([
@@ -310,9 +313,6 @@ D.prespectiveMatrix=(fov=80,aspect=D.aspect,zn=0.1,zf=1000)=>{
         0,0,zn*zf*rangeInv*2,0
     ])
 }
-
-D.createIdentityMatrix=()=>mat4.identity(new Float32Array(16))
-D.IDENTITY_MATRIX=D.createIdentityMatrix()
 
 D.setViewMatrix=(mat,proj,x,y,z,yaw,pitch,zoomBack=0)=>{
     
@@ -388,11 +388,11 @@ D.setViewMatrix=(mat,proj,x,y,z,yaw,pitch,zoomBack=0)=>{
     return {camPos:[x,y,z],modelMatrix:m,camDir:d}
 }
 
-D.createTexture=(width=D.viewportWidth,height=D.viewportHeight,data=null,filter='LINEAR',wrap='CLAMP_TO_EDGE',format='RGBA',internalFormat='RGBA',type='UNSIGNED_BYTE',mipmap=false)=>{
+D.createTexture=(width=D.viewportWidth,height=D.viewportHeight,data=null,filter='LINEAR',wrap='CLAMP_TO_EDGE',internalFormat='RGBA',format='RGBA',type='UNSIGNED_BYTE',mipmap=false)=>{
     
     let t=gl.createTexture()
     gl.bindTexture(gl.TEXTURE_2D,t)
-    gl.texImage2D(gl.TEXTURE_2D,0,gl[format],width,height,0,gl[internalFormat],gl[type],data)
+    gl.texImage2D(gl.TEXTURE_2D,0,gl[internalFormat],width,height,0,gl[format],gl[type],data)
     gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl[filter])
     gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl[filter])
     gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl[wrap])
@@ -460,7 +460,9 @@ D.createMeshData=(params)=>{
     
     let meshKey={x:0,y:1,z:2,u:3,v:4,nx:5,ny:6,nz:7,r:8,g:9,b:10,a:11},meshKeyAmount=0
     
-    for(let i=0;i<params.extraData;i++){
+    params.defaultData=params.defaultData||[]
+    
+    for(let i=0;i<params.defaultData.length;i++){
         
         meshKey['data_'+i]=12+i
     }
@@ -473,7 +475,12 @@ D.createMeshData=(params)=>{
     
     for(let j in params.meshes){
         
-        let t=params.meshes[j],extraData=t.data||(params.defaultData?params.defaultData:'0'.repeat(params.extraData).split(''))
+        let t=params.meshes[j],extraData=t.data||(params.defaultData?params.defaultData:'0'.repeat(params.defaultData.length).split(''))
+        
+        if(extraData.length!==params.defaultData.length)
+            for(let i in params.defaultData)
+                if(extraData[i]===undefined)
+                    extraData[i]=params.defaultData[i]
         
         switch(t.type){
             
@@ -483,6 +490,9 @@ D.createMeshData=(params)=>{
                     let x=t.x||0,
                         y=t.y||0,
                         z=t.z||0,
+                        prex=t.prex||0,
+                        prey=t.prey||0,
+                        prez=t.prez||0,
                         rx=t.rx||0,
                         ry=t.ry||0,
                         rz=t.rz||0,
@@ -494,6 +504,19 @@ D.createMeshData=(params)=>{
                         vl=params.vl+(verts.length/order.length)
                         _quat=quat.fromEuler([],rx,ry,rz),
                         _tex=t.textureMapping||{top:{x:0,y:0,w:1,h:1},bottom:{x:0,y:0,w:1,h:1},left:{x:0,y:0,w:1,h:1},right:{x:0,y:0,w:1,h:1},front:{x:0,y:0,w:1,h:1},back:{x:0,y:0,w:1,h:1}}
+                    
+                    _tex.top.w??=w*(_tex.top.sw||1)
+                    _tex.top.h??=l*(_tex.top.sh||1)
+                    _tex.bottom.w??=w*(_tex.bottom.sw||1)
+                    _tex.bottom.h??=l*(_tex.bottom.sh||1)
+                    _tex.left.w??=l*(_tex.left.sw||1)
+                    _tex.left.h??=h*(_tex.left.sh||1)
+                    _tex.right.w??=l*(_tex.right.sw||1)
+                    _tex.right.h??=h*(_tex.right.sh||1)
+                    _tex.front.w??=w*(_tex.front.sw||1)
+                    _tex.front.h??=h*(_tex.front.sh||1)
+                    _tex.back.w??=w*(_tex.back.sw||1)
+                    _tex.back.h??=h*(_tex.back.sh||1)
                     
                     let v=[
                         
@@ -517,6 +540,8 @@ D.createMeshData=(params)=>{
                     ]
                     
                     for(let i in v){
+                        
+                        vec3.add(v[i],v[i],[prex,prey,prez])
                         
                         vec3.transformQuat(v[i],v[i],_quat)
                         
@@ -609,22 +634,22 @@ D.createMeshData=(params)=>{
                     9,8,1,4,9,5,2,4,11,6,2,10,8,6,7);
                     
                     let _v=12;
-                    let midCache=t.detail ? new Map() : null;
+                    let midCache=t.detail?new Map() : null;
                     
                     function addMidPoint(a,b) {
                         let _key=Math.floor((a+b)*(a+b+1)*0.5)+Math.min(a,b);
                         let i=midCache.get(_key);
                         if (i !== undefined) { midCache.delete(_key); return i; }
                         midCache.set(_key,_v);
-                        for (let k=0; k < 3; k++)vertices[3*_v+k]=(vertices[3*a+k]+vertices[3*b+k])*0.5;
+                        for (let k=0; k<3; k++)vertices[3*_v+k]=(vertices[3*a+k]+vertices[3*b+k])*0.5;
                         i=_v++;
                         return i;
                     }
                     
                     let trianglesPrev=triangles;
-                    for (let i=0; i < t.detail; i++) {
+                    for (let i=0; i<t.detail; i++) {
                     triangles=new Uint32Array(trianglesPrev.length<<2);
-                    for (let k=0; k < trianglesPrev.length; k += 3) {
+                    for (let k=0; k<trianglesPrev.length; k+=3) {
                       let v1=trianglesPrev[k];
                       let v2=trianglesPrev[k+1];
                       let v3=trianglesPrev[k+2];
@@ -640,11 +665,37 @@ D.createMeshData=(params)=>{
                     trianglesPrev=triangles;
                     }
                     
-                    for (let i=0; i < vertices.length; i += 3) {
+                    let x=t.x||0,
+                        y=t.y||0,
+                        z=t.z||0,
+                        prex=t.prex||0,
+                        prey=t.prey||0,
+                        prez=t.prez||0,
+                        _quat=quat.fromEuler([],t.rx||0,t.ry||0,t.rz||0),normals=[]
+                        
+                    for (let i=0; i<vertices.length; i+=3) {
+                        
                         let m=1 / Math.hypot(vertices[i],vertices[i+1],vertices[i+2]);
-                        vertices[i] *= m;
-                        vertices[i+1] *= m;
-                        vertices[i+2] *= m;
+                        
+                        vertices[i]*=m;
+                        vertices[i+1]*=m;
+                        vertices[i+2]*=m;
+                        
+                        let tq=vec3.transformQuat([],[vertices[i],vertices[i+1],vertices[i+2]],_quat)
+                        
+                        normals[i]=tq[0]
+                        normals[i+1]=tq[1]
+                        normals[i+2]=tq[2]
+                        
+                        vertices[i]=vertices[i]*t.radius+prex
+                        vertices[i+1]=vertices[i+1]*t.radius+prey
+                        vertices[i+2]=vertices[i+2]*t.radius+prez
+                        
+                        tq=vec3.transformQuat([],[vertices[i],vertices[i+1],vertices[i+2]],_quat)
+                        
+                        vertices[i]=tq[0]+x
+                        vertices[i+1]=tq[1]+y
+                        vertices[i+2]=tq[2]+z
                     }
                     
                     for(let i in triangles){
@@ -653,12 +704,11 @@ D.createMeshData=(params)=>{
                         
                     }
                     
-                    let rad=t.radius
                     __verts=[]
                     
                     for(let i=0,l=vertices.length;i<l;i+=3){
                         
-                        __verts.push(vertices[i]*rad+t.x,vertices[i+1]*rad+t.y,vertices[i+2]*rad+t.z,(-Math.acos(vertices[i])/D.PI)*tex.side.w+tex.side.x,(-vertices[i+1]*0.5+0.5)*tex.side.h+tex.side.y,vertices[i],vertices[i+1],vertices[i+2],t.r||0,t.g||0,t.b||0,t.a||1,...extraData)
+                        __verts.push(vertices[i],vertices[i+1],vertices[i+2],(-Math.acos(vertices[i])/D.PI)*tex.side.w+tex.side.x,(-normals[i+1]*0.5+0.5)*tex.side.h+tex.side.y,normals[i],normals[i+1],normals[i+2],t.r||0,t.g||0,t.b||0,t.a||1,...extraData)
                     }
                     
                     for(let i=0,l=__verts.length;i<l;i+=meshKeyAmount){
@@ -843,22 +893,22 @@ D.createMeshData=(params)=>{
                     9,8,1,4,9,5,2,4,11,6,2,10,8,6,7);
                     
                     let _v=12;
-                    let midCache=t.detail ? new Map() : null;
+                    let midCache=t.detail?new Map() : null;
                     
                     function addMidPoint(a,b) {
                         let _key=Math.floor((a+b)*(a+b+1)*0.5)+Math.min(a,b);
                         let i=midCache.get(_key);
                         if (i !== undefined) { midCache.delete(_key); return i; }
                         midCache.set(_key,_v);
-                        for (let k=0; k < 3; k++)vertices[3*_v+k]=(vertices[3*a+k]+vertices[3*b+k])*0.5;
+                        for (let k=0; k<3; k++)vertices[3*_v+k]=(vertices[3*a+k]+vertices[3*b+k])*0.5;
                         i=_v++;
                         return i;
                     }
                     
                     let trianglesPrev=triangles;
-                    for (let i=0; i < t.detail; i++) {
+                    for (let i=0; i<t.detail; i++) {
                     triangles=new Uint32Array(trianglesPrev.length<<2);
-                    for (let k=0; k < trianglesPrev.length; k += 3) {
+                    for (let k=0; k<trianglesPrev.length; k+=3) {
                       let v1=trianglesPrev[k];
                       let v2=trianglesPrev[k+1];
                       let v3=trianglesPrev[k+2];
@@ -874,11 +924,11 @@ D.createMeshData=(params)=>{
                     trianglesPrev=triangles;
                     }
                     
-                    for (let i=0; i < vertices.length; i += 3) {
+                    for (let i=0; i<vertices.length; i+=3) {
                         let m=1 / Math.hypot(vertices[i],vertices[i+1],vertices[i+2]);
-                        vertices[i] *= m;
-                        vertices[i+1] *= m;
-                        vertices[i+2] *= m;
+                        vertices[i]*=m;
+                        vertices[i+1]*=m;
+                        vertices[i+2]*=m;
                     }
                     
                     let VERTS=[],INDEX=[]
@@ -916,6 +966,27 @@ D.createMeshData=(params)=>{
                 }
                 
             break
+            
+            case 'obj':
+                
+                {
+                    let obj=D.createOBJMeshData({
+                        
+                        obj:t.obj,
+                        order:params.order,
+                        color:t.r===undefined?undefined:[t.r,t.g,t.b,t.a===undefined?1:t.a],
+                        defaultData:params.defaultData,
+                        data:t.data,
+                        ignoreUVs:t.ignoreUVs===undefined?true:t.ignoreUVs,
+                        vl:params.vl+(verts.length/params.order.length),
+                        transformations:{x:t.x,y:t.y,z:t.z,prex:t.prex,prey:t.prey,prez:t.prez,rx:t.rx,ry:t.ry,rz:t.rz,sx:t.sx,sy:t.sy,sz:t.sz}
+                    })
+                    
+                    verts.push(...obj.verts)
+                    index.push(...obj.index)
+                }
+            
+            break
         }
     }
     
@@ -929,17 +1000,19 @@ D.createMeshData=(params)=>{
             
         }
         
-        return {verts:verts,index:_index,primitive:'LINES'}
+        return {verts:Float32Array.from(verts),index:Uint32Array.from(_index),primitive:'LINES'}
     }
     
-    return {verts:verts,index:index,primitive:params.primitive||'TRIANGLES'}
+    return {verts:Float32Array.from(verts),index:Uint32Array.from(index),primitive:params.primitive||'TRIANGLES'}
 }
 
 D.createOBJMeshData=(params)=>{
     
     let meshKey={x:0,y:1,z:2,u:3,v:4,nx:5,ny:6,nz:7,r:8,g:9,b:10,a:11},meshKeyAmount=0
     
-    for(let i=0;i<params.extraData;i++){
+    params.defaultData=params.defaultData||[]
+    
+    for(let i=0;i<params.defaultData.length;i++){
         
         meshKey['data_'+i]=12+i
     }
@@ -947,9 +1020,13 @@ D.createOBJMeshData=(params)=>{
     for(let i in meshKey){meshKeyAmount++}
     
     params.vl=params.vl||0
-    params.color=params.color&&params.color.length===4?params.color:[0,0,0,1]
     
-    let _verts=[],index=[],pos=[],uv=[],normal=[],faces=[],order=params.order,extraData=params.data||'0'.repeat(params.extraData).split('')
+    let _verts=[],index=[],pos=[],uv=[],normal=[],color=[],mtl={},currentmtl,faces=[],order=params.order,extraData=params.data||'0'.repeat(params.defaultData.length).split('')
+    
+    if(extraData.length!==params.defaultData.length)
+            for(let i in params.defaultData)
+                if(extraData[i]===undefined)
+                    extraData[i]=params.defaultData[i]
     
     let obj=params.obj.trim().split('\n')
     
@@ -963,16 +1040,37 @@ D.createOBJMeshData=(params)=>{
             
             if(s[j].indexOf('/')<0){
                 
-                data.push(Number(s[j]))
+                if(type.indexOf('mtl')>-1){
+                    
+                    data.push(s[j])
+                    
+                } else {
+                    
+                    data.push(Number(s[j]))
+                }
+                
             }
         }
         
         switch(type){
             
+            case 'newmtl':
+            case 'usemtl':
+                
+                currentmtl=data.join('_')
+                
+            break
+            
+            case 'Kd':
+                
+                mtl[currentmtl]=data.length===4?data:[...data,1]
+                
+            break
+            
             case 'v':
                 
                 pos.push(data)
-                
+                color.push(mtl[currentmtl])
             break
             
             case 'vt':
@@ -1002,6 +1100,24 @@ D.createOBJMeshData=(params)=>{
         
     }
     
+    params.transformations=params.transformations||{}
+    
+    let pre=[params.transformations.prex||0,params.transformations.prey||0,params.transformations.prez||0],_quat=quat.fromEuler([],params.transformations.rx||0,params.transformations.ry||0,params.transformations.rz||0),tr=[params.transformations.x||0,params.transformations.y||0,params.transformations.z||0],sca=[params.transformations.sx||1,params.transformations.sy||1,params.transformations.sz||1]
+    
+    for(let i in pos){
+        
+        vec3.add(pos[i],pos[i],pre)
+        vec3.mul(pos[i],pos[i],sca)
+        vec3.transformQuat(pos[i],pos[i],_quat)
+        
+        vec3.add(pos[i],pos[i],tr)
+    }
+    
+    for(let i in normal){
+        
+        vec3.transformQuat(normal[i],normal[i],_quat)
+    }
+    
     for(let i in faces){
         
         let v=[],vt=[],vn=[],vl=(_verts.length/meshKeyAmount)+params.vl,count=0
@@ -1011,7 +1127,7 @@ D.createOBJMeshData=(params)=>{
             let f=faces[i][j]
             
             count++
-            _verts.push(...pos[f[0]-1],...uv[f[1]-1],...normal[f[2]-1],...params.color,...extraData)
+            _verts.push(...pos[f[0]-1],...(params.ignoreUVs?typeof params.ignoreUVs==='boolean'?[0,0]:params.ignoreUVs:uv[f[1]-1]),...normal[f[2]-1],...(params.color?params.color:color[f[0]-1]),...extraData)
         }
         
         for(let i=0;i<count-1;i++){
@@ -1030,9 +1146,9 @@ D.createOBJMeshData=(params)=>{
         }
     }
     
-    let _index=[]
-    
     if(params.wireframe){
+        
+        let _index=[]
         
         for(let i=0,l=index.length;i<l;i+=3){
             
@@ -1040,11 +1156,10 @@ D.createOBJMeshData=(params)=>{
             
         }
         
-        return {verts:verts,index:_index,wireframe:true,primitive:'LINES'}
+        return {verts:Float32Array.from(verts),index:Uint32Array.from(_index),wireframe:true,primitive:'LINES'}
     }
     
-    return {verts:verts,index:index,primitive:params.primitive||'TRIANGLES'}
-   
+    return {verts:Float32Array.from(verts),index:Uint32Array.from(index),primitive:params.primitive||'TRIANGLES'}
 }
 
 
